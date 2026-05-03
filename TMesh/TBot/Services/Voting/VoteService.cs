@@ -134,22 +134,28 @@ namespace TBot.Services.Voting
 
                 newSnapshotRecords.Add(newSnapshotRecord);
 
+                var updatedInstant = Instant.FromDateTimeUtc(DateTime.SpecifyKind(device.UpdatedUtc.AddSeconds(1), DateTimeKind.Utc));
                 if (participant != null)
                 {
                     participant.LongName = deviceName;
                     participant.IsNoVote = currentVote == NoVote;
 
-                    if (device.UpdatedUtc > participant.LastVote.ToDateTimeUtc())
+                    if (updatedInstant > participant.LastVote)
                     {
-                        participant.LastVote = instantNow;
+                        participant.VotePacketId = (uint?)device.LastNodeInfoPacketId;
+                        participant.LastVote = updatedInstant;
+                        participant.Modified = instantNow;
+                        participant.UpdateReason = VoteLog.VoteChangeReason.VoteConfirmed;
                         participant.VoteCount++;
                     }
 
                     if (participant.CurrentOptionId != currentVote)
                     {
+                        participant.Modified = instantNow;
                         participant.PreviousOptionId = participant.CurrentOptionId;
                         participant.CurrentOptionId = currentVote;
-                        participant.LastVoteChange = instantNow;
+                        participant.LastVoteChange = updatedInstant;
+                        participant.UpdateReason = VoteLog.VoteChangeReason.VoteChanged;
 
                         var log = new VoteLog
                         {
@@ -157,8 +163,8 @@ namespace TBot.Services.Voting
                             VoteId = vote.Id,
                             DeviceId = participant.DeviceId,
                             LogCreated = instantNow,
-                            ChangeMade = Instant.FromDateTimeUtc(DateTime.SpecifyKind(device.UpdatedUtc, DateTimeKind.Utc)),
-                            MeshPacketId = (uint?)device.LastNodeInfoPacketId,
+                            ChangeMade = updatedInstant,
+                            MeshPacketId = participant.VotePacketId,
                             NewLongName = deviceName,
                             OldOptionId = participant.PreviousOptionId,
                             NewOptionId = currentVote,
@@ -176,13 +182,16 @@ namespace TBot.Services.Voting
                     {
                         DeviceId = (uint)device.DeviceId,
                         LongName = deviceName,
-                        FirstVote = instantNow,
-                        LastVote = instantNow,
+                        FirstVote = updatedInstant,
+                        LastVote = updatedInstant,
+                        Modified = instantNow,
                         CurrentOptionId = currentVote,
                         IsNoVote = currentVote == NoVote,
                         VoteCount = 1,
                         VoteId = vote.Id,
-                        LastVoteChange = instantNow,
+                        VotePacketId = (uint?)device.LastNodeInfoPacketId,
+                        UpdateReason = VoteLog.VoteChangeReason.FirstVote,
+                        LastVoteChange = updatedInstant,
                         NodeRegistered = Instant.FromDateTimeUtc(DateTime.SpecifyKind(device.NodeCreatedUtc, DateTimeKind.Utc)),
                         PreviousOptionId = NoVote
                     };
@@ -194,7 +203,7 @@ namespace TBot.Services.Voting
                         VoteId = vote.Id,
                         DeviceId = participant.DeviceId,
                         LogCreated = instantNow,
-                        ChangeMade = Instant.FromDateTimeUtc(DateTime.SpecifyKind(device.UpdatedUtc, DateTimeKind.Utc)),
+                        ChangeMade = updatedInstant,
                         MeshPacketId = (uint?)device.LastNodeInfoPacketId,
                         NewLongName = deviceName,
                         OldOptionId = NoVote,
@@ -212,6 +221,8 @@ namespace TBot.Services.Voting
                 participant.PreviousOptionId = participant.CurrentOptionId;
                 participant.CurrentOptionId = NoVote;
                 participant.LastVoteChange = instantNow;
+                participant.Modified = instantNow;
+                participant.UpdateReason = VoteLog.VoteChangeReason.VoteExpired;
 
                 var log = new VoteLog
                 {

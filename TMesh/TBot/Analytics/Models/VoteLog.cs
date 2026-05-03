@@ -13,7 +13,8 @@ namespace TBot.Analytics.Models
         {
             FirstVote = 0,
             VoteChanged = 1,
-            VoteExpired = 2
+            VoteExpired = 2,
+            VoteConfirmed = 3,
         }
 
         public int Id { get; set; }

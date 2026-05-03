@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static TBot.Analytics.Models.VoteLog;
 
 namespace TBot.Analytics.Models
 {
@@ -20,13 +21,19 @@ namespace TBot.Analytics.Models
 
         public NodaTime.Instant LastVoteChange { get; set; }
         public NodaTime.Instant NodeRegistered { get; set; }
+        public NodaTime.Instant Modified { get; set; }
 
         public byte CurrentOptionId { get; set; }
         public byte PreviousOptionId { get; set; }
 
+        public uint? VotePacketId { get; set; }
+
         public bool IsNoVote { get; set; }
 
         public int VoteCount { get; set; }
+
+        public VoteChangeReason UpdateReason { get; set; }
+
 
     }
 }
