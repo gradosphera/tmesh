@@ -1595,6 +1595,31 @@ namespace TBot
             return aggregate;
         }
 
+        public T AggregateStartFrom<T>(int networkId, DateTime fromUtc, Func<MeshStat, T, T> selector)
+        {
+            var aggregate = default(T);
+            lock (_meshStatsQueueByNetwork)
+            {
+                if (!_meshStatsQueueByNetwork.TryGetValue(networkId, out var queue))
+                {
+                    return aggregate;
+                }
+
+                foreach (var stat in queue)
+                {
+                    if (stat.IntervalStart >= fromUtc)
+                    {
+                        aggregate = selector(stat, aggregate);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            }
+            return aggregate;
+        }
+
         public void AddStat(MeshStat stat)
         {
             lock (_meshStatsQueueByNetwork)

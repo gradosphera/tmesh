@@ -13,6 +13,7 @@ using TBot.Helpers;
 using TBot.Models;
 using TBot.Models.ChatSession;
 using TBot.Models.MeshMessages;
+using TBot.Services;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
@@ -28,8 +29,10 @@ namespace TBot.Bot
         BotCache botCache,
         ILogger<MeshtasticBotService> logger,
         IServiceProvider services,
-        TBotDbContext db)
+        TBotDbContext db,
+        UptimeService uptimeService)
     {
+        private const int MaxFakeMsgReplyPer5Min = 30;
         private readonly TBotOptions _options = options.Value;
 
         public List<MeshtasticMessageStatus> TrackedMessages => meshSender.TrackedMessages;
@@ -263,9 +266,21 @@ namespace TBot.Bot
         private void CheckPublicTextForFakeMessage(TextMessage message)
         {
             var isValidMessage = botCache.IsMessageSentByOurNode(message.Id);
-            if (!isValidMessage)
+            if (!isValidMessage 
+                && uptimeService.Uptime.TotalMinutes > 10 /*If restarted can hear own message from map mqtt downlink*/)
             {
-                if (!string.IsNullOrEmpty(_options.Texts.FakeMessageWarningReply))
+                var fakeMsgReplyLast5Min = meshtasticService.AggregateStartFrom<int>(
+                    message.NetworkId, 
+                    DateTime.UtcNow.AddMinutes(-5),
+                    (stat, sum) => 
+                        {
+                            sum += stat.FakeMsgReply;
+                            return sum;
+                        });
+
+
+                if (!string.IsNullOrEmpty(_options.Texts.FakeMessageWarningReply)
+                    && fakeMsgReplyLast5Min < MaxFakeMsgReplyPer5Min)
                 {
                     var newMsgId = MeshtasticService.GetNextMeshtasticMessageId();
                     botCache.StoreMessageSentByOurNode(newMsgId);
@@ -279,6 +294,11 @@ namespace TBot.Bot
                             : MeshtasticService.UnknownChannelName,
                         message.DecodedBy,
                         replyToMessageId: message.Id);
+
+                    meshtasticService.AddStat(new Shared.Models.MeshStat
+                    {
+                        FakeMsgReply = 1,
+                    });
                 }
             }
         }

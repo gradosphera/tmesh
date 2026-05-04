@@ -24,6 +24,7 @@ namespace Shared.Models
         public int AckSent { get; set; }
         public int NakSent { get; set; }
         public int PongSent { get; set; }
+        public int FakeMsgReply { get; set; }
         public int TraceRoutes { get; set; }
         public int BridgeDirectMessagesToGateways { get; set; }
 
@@ -43,6 +44,7 @@ namespace Shared.Models
             NakSent += other.NakSent;
             TraceRoutes += other.TraceRoutes;
             PongSent += other.PongSent;
+            FakeMsgReply += other.FakeMsgReply;
             BridgeDirectMessagesToGateways += other.BridgeDirectMessagesToGateways;
         }
 

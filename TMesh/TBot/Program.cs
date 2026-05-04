@@ -11,6 +11,7 @@ using MQTTnet;
 using TBot.Bot;
 using Serilog;
 using TBot.Services.Voting;
+using TBot.Services;
 
 namespace TBot
 {
@@ -59,6 +60,7 @@ namespace TBot
                         services.AddScoped<VoteService>();
                     }
                     services.AddMemoryCache();
+                    services.AddSingleton<UptimeService>();
                     services.AddSingleton<TimeZoneHelper>();
                     services.AddSingleton<LocalMessageQueueService>();
                     services.AddSingleton<MqttClientFactory>();

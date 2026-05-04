@@ -15,6 +15,7 @@ using TBot.Database.Models;
 using TBot.Models;
 using TBot.Models.MeshMessages;
 using TBot.Models.Queue;
+using TBot.Services;
 using TBot.Services.Voting;
 
 namespace TBot;
@@ -28,14 +29,14 @@ public class MessageLoopService(
     IOptions<TBotOptions> options,
     IServiceProvider services,
     SimpleScheduler scheduler,
-    BotCache botCache) : IHostedService
+    BotCache botCache,
+    UptimeService uptimeService) : IHostedService
 {
     private const int GatewayActivityRefreshEveryHours = 1;
     private const int CheckGatewayNodeInfoLastSeenAfterMinutes = 60;
     private readonly TBotOptions _options = options.Value;
     private System.Timers.Timer _serviceInfoTimer;
     private DateTime _lastVirtualNodeInfoSent = DateTime.MinValue;
-    private DateTime _started;
     private DateTime _lastGatewayCleanup = DateTime.MinValue;
     private readonly ConcurrentDictionary<long, DateTime> _gatewayLastSeen = new();
 
@@ -49,7 +50,7 @@ public class MessageLoopService(
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _started = DateTime.UtcNow;
+        uptimeService.Reset();
         using var scope = services.CreateScope();
         await FillGatewayIds(scope);
         await FillPrimaryChannels(scope);
@@ -328,7 +329,7 @@ public class MessageLoopService(
         {
             Networks = allStats,
             LastUpdate = now,
-            Started = _started,
+            Started = uptimeService.Started,
             TgChats = await registrationService.GetTelegramChatsCount(),
             ApprovedChannels = await registrationService.GetApprovedChannelsCount(),
             ApprovedDevices = await registrationService.GetApprovedDevicesCount(),
