@@ -93,7 +93,7 @@ namespace TBot.Services.Voting
             analyticsService.Add(newSnapshot);
             await analyticsService.SaveChanges();
 
-            var newSnapshotRecords = new List<VoteSnapshotRecord>();
+            var newSnapshotRecords = new List<VoteSnapshotRecord>(devices.Count);
             var newParticipants = new List<VoteParticipant>();
             var newLogs = new List<VoteLog>();
 
@@ -115,14 +115,6 @@ namespace TBot.Services.Voting
                 }
 
                 stat.ActiveCount++;
-                if (currentVote == NoVote)
-                {
-                    if (participant == null)
-                    {
-                        continue;
-                    }
-                }
-
 
                 var newSnapshotRecord = new VoteSnapshotRecord
                 {
@@ -133,6 +125,14 @@ namespace TBot.Services.Voting
                 };
 
                 newSnapshotRecords.Add(newSnapshotRecord);
+
+                if (currentVote == NoVote)
+                {
+                    if (participant == null)
+                    {
+                        continue;
+                    }
+                }
 
                 var updatedInstant = Instant.FromDateTimeUtc(DateTime.SpecifyKind(device.UpdatedUtc.AddSeconds(1), DateTimeKind.Utc));
                 if (participant != null)
