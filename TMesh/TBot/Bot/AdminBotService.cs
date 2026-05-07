@@ -136,6 +136,10 @@ namespace TBot.Bot
                     {
                         return await ToggleScheduledMessage(chatId, segments);
                     }
+                case "change_scheduled_message_channel":
+                    {
+                        return await ChangeScheduledMessageChannel(chatId, segments);
+                    }
                 case "list_scheduled_messages":
                     {
                         return await ListScheduledMessages(chatId);
@@ -1216,6 +1220,37 @@ namespace TBot.Bot
             return TgResult.Ok;
         }
 
+        private async Task<TgResult> ChangeScheduledMessageChannel(long chatId, string[] segments)
+        {
+            if (segments.Length < 3
+                || !int.TryParse(segments[1], out var messageId)
+                || !int.TryParse(segments[2], out var publicChannelId))
+            {
+                await botClient.SendMessage(chatId, "Usage: change_scheduled_message_channel <message_id> <public_channel_id>");
+                return TgResult.Ok;
+            }
+
+            var msg = await registrationService.GetScheduledMessageByIdAsync(messageId);
+            if (msg == null)
+            {
+                await botClient.SendMessage(chatId, $"Scheduled message #{messageId} not found.");
+                return TgResult.Ok;
+            }
+
+            var channel = await registrationService.GetPublicChannelByIdAsync(publicChannelId);
+            if (channel == null)
+            {
+                await botClient.SendMessage(chatId, $"Public channel #{publicChannelId} not found.");
+                return TgResult.Ok;
+            }
+
+            await registrationService.ChangeScheduledMessageChannelAsync(messageId, publicChannelId);
+            await botClient.SendMessage(chatId,
+                $"Scheduled message #{messageId} moved to channel #{publicChannelId} \"{StringHelper.EscapeMd(channel.Name)}\".",
+                parseMode: ParseMode.Markdown);
+            return TgResult.Ok;
+        }
+
         private async Task<TgResult> ListScheduledMessages(long chatId)
         {
             var items = await registrationService.ListScheduledMessagesAsync();
@@ -1245,11 +1280,12 @@ namespace TBot.Bot
                     lines.Add($"  enable at: `{StringHelper.EscapeMdV2(timeZoneHelper.ConvertFromUtcToDefaultTimezone(msg.EnableAt.Value).ToString(LocalDateFormat))}`");
                 if (msg.DisableAt.HasValue)
                     lines.Add($"  disable at: `{StringHelper.EscapeMdV2(timeZoneHelper.ConvertFromUtcToDefaultTimezone(msg.DisableAt.Value).ToString(LocalDateFormat))}`");
-                lines.Add($"  `[0]` _{StringHelper.EscapeMdV2(msg.Text)}_");
+                lines.Add($"  `[0]` _{StringHelper.EscapeMdV2(msg.Text)}_" + (msg.LastSentVariantIndex == 0 ? " ◀" : ""));
                 for (int i = 0; i < msg.Variants.Count; i++)
                 {
                     var v = msg.Variants[i];
-                    lines.Add($"  `[{i + 1}]` id\\={v.Id} _{StringHelper.EscapeMdV2(v.Text)}_");
+                    var current = msg.LastSentVariantIndex == i + 1 ? " ◀" : "";
+                    lines.Add($"  `[{i + 1}]` id\\={v.Id} _{StringHelper.EscapeMdV2(v.Text)}_{current}");
                 }
             }
 

@@ -1590,6 +1590,15 @@ namespace TBot
         public async Task<ScheduledMessage> GetScheduledMessageByIdAsync(int id)
             => await db.ScheduledMessages.FindAsync(id);
 
+        public async Task<bool> ChangeScheduledMessageChannelAsync(int messageId, int publicChannelId)
+        {
+            var msg = await db.ScheduledMessages.FindAsync(messageId);
+            if (msg == null) return false;
+            msg.PublicChannelId = publicChannelId;
+            await db.SaveChangesAsync();
+            return true;
+        }
+
         public async Task<ScheduledMessage> AddScheduledMessageAsync(int publicChannelId, int intervalMinutes, string text, DateTime? enableAtUtc = null, DateTime? disableAtUtc = null)
         {
             var msg = new ScheduledMessage
