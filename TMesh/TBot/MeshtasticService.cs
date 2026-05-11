@@ -162,7 +162,8 @@ namespace TBot
                 text,
                 replyToMessageId,
                 relayGatewayId,
-                hopLimit);
+                hopLimit,
+                sendDelay: sendDelay);
         }
 
         public QueueResult SendDirectTextMessage(
