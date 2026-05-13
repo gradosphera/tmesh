@@ -115,7 +115,8 @@ namespace TBot
             return _processingTask;
         }
 
-        public int GetQueueLength(int networkId) => _queues.TryGetValue(networkId, out var queue) ? queue.Count : 0;
+        public int GetTotalQueueLength(int networkId) => _queues.TryGetValue(networkId, out var queue) ? queue.Count : 0;
+        public int GetQueueLength(int networkId, MessagePriority priority) => _queues.TryGetValue(networkId, out var queue) ? queue.CountPriorityNonCumulative(priority) : 0;
 
         public TimeSpan EstimateDelay(int networkId, MessagePriority priority)
         {
@@ -125,7 +126,7 @@ namespace TBot
                 return TimeSpan.Zero;
             }
 
-            int queuedCount = queue.CountPriority(priority);
+            int queuedCount = queue.CountPriorityCumulative(priority);
             var lastDequeueTime = queue.LastDequeueTime;
             var estimatedMs = queuedCount * _delayMs;
             var elapsedMs = (long)(DateTime.UtcNow - lastDequeueTime).TotalMilliseconds;

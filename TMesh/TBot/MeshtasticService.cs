@@ -153,7 +153,8 @@ namespace TBot
             long? replyToMessageId,
             long? relayGatewayId,
             int hopLimit,
-            TimeSpan sendDelay = default)
+            TimeSpan sendDelay = default,
+            MessagePriority priority = MessagePriority.Normal)
         {
             return SendDirectTextMessage(GenerateNewMessageId(),
                 deviceId,
@@ -163,7 +164,8 @@ namespace TBot
                 replyToMessageId,
                 relayGatewayId,
                 hopLimit,
-                sendDelay: sendDelay);
+                sendDelay: sendDelay,
+                priority: priority);
         }
 
         public QueueResult SendDirectTextMessage(
@@ -176,7 +178,9 @@ namespace TBot
             long? relayGatewayId,
             int hopLimit,
             bool isEmoji = false,
-            TimeSpan sendDelay = default)
+            TimeSpan sendDelay = default,
+            MessagePriority priority = MessagePriority.Normal
+            )
         {
             logger.LogInformation("Sending text message to device {DeviceId}", deviceId);
             var envelope = PackDirectTextMessage(
@@ -187,6 +191,7 @@ namespace TBot
                 replyToMessageId,
                 hopLimit,
                 isEmoji);
+
             AddStat(new MeshStat
             {
                 NetworkId = networkId,
@@ -195,7 +200,7 @@ namespace TBot
 
             return QueueMaybeWithDelay(envelope,
                 networkId,
-                MessagePriority.Normal,
+                priority,
                 relayGatewayId,
                 sendDelay);
         }
@@ -403,7 +408,7 @@ namespace TBot
                 NetworkId = msg.NetworkId,
                 NakSent = 1
             });
-            QueueMessage(envelope, msg.NetworkId, MessagePriority.Low, relayGatewayId);
+            QueueMessage(envelope, msg.NetworkId, MessagePriority.Normal, relayGatewayId);
         }
 
 
@@ -848,7 +853,7 @@ namespace TBot
                 envelope,
                 primaryChannel.NetworkId,
                 destinationDeviceId == BroadcastDeviceId
-                    ? MessagePriority.Low
+                    ? MessagePriority.Normal
                     : MessagePriority.High,
                 relayThroughGatewayId);
         }
@@ -1475,7 +1480,10 @@ namespace TBot
             return localMessageQueueService.EstimateDelay(networkId, priority);
         }
 
-        public int GetQueueLength(int networkId) => localMessageQueueService.GetQueueLength(networkId);
+        public int GetTotalQueueLength(int networkId) => localMessageQueueService.GetTotalQueueLength(networkId);
+        public int GetQueueLength(int networkId, MessagePriority priority) => localMessageQueueService.GetQueueLength(networkId, priority);
+
+
 
         public TimeSpan SingleMessageQueueDelay => localMessageQueueService.SingleMessageQueueDelay;
 

@@ -70,15 +70,26 @@ namespace TBot.Models.Queue
             };
         }
 
-        public int Count => _highPriorityQueue.Count + _normalPriorityQueue.Count + _lowPriorityQueue.Count;
+        public int Count => CountPriorityCumulative(MessagePriority.Low);
 
-        public int CountPriority(MessagePriority priority)
+        public int CountPriorityCumulative(MessagePriority priority)
         {
             return priority switch
             {
                 MessagePriority.High => _highPriorityQueue.Count,
                 MessagePriority.Normal => _highPriorityQueue.Count + _normalPriorityQueue.Count,
                 MessagePriority.Low => _highPriorityQueue.Count + _normalPriorityQueue.Count + _lowPriorityQueue.Count,
+                _ => throw new ArgumentOutOfRangeException(nameof(priority), priority, null)
+            };
+        }
+
+        public int CountPriorityNonCumulative(MessagePriority priority)
+        {
+            return priority switch
+            {
+                MessagePriority.High => _highPriorityQueue.Count,
+                MessagePriority.Normal => _normalPriorityQueue.Count,
+                MessagePriority.Low => _lowPriorityQueue.Count,
                 _ => throw new ArgumentOutOfRangeException(nameof(priority), priority, null)
             };
         }

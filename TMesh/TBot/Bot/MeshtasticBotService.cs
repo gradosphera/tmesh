@@ -529,7 +529,7 @@ namespace TBot.Bot
                 }
             }
 
-            if (!message.IsEmoji && meshtasticService.GetQueueLength(channel.NetworkId) < _options.MaxQueueLengthForChannelAckEmojis)
+            if (!message.IsEmoji && meshtasticService.GetTotalQueueLength(channel.NetworkId) < _options.MaxQueueLengthForChannelAckEmojis)
             {
                 meshtasticService.SendPrivateChannelTextMessage(
                     MeshtasticService.GetNextMeshtasticMessageId(),

@@ -1,9 +1,11 @@
 using Microsoft.Extensions.Options;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using TBot.Database.Models;
 using TBot.Helpers;
 using TBot.Models;
+using TBot.Models.Admin;
 using Telegram.Bot;
 using Telegram.Bot.Types.Enums;
 
@@ -34,6 +36,8 @@ namespace TBot.Bot
             {
                 if (chatState == ChatState.Admin)
                 {
+                    // Refresh chat state to prevent expiration while admin is active
+                    registrationService.SetChatState(userId, chatId, ChatState.Admin);
                     await botClient.SendMessage(chatId, "Invalid admin command");
                     return TgResult.Ok;
                 }
@@ -45,6 +49,12 @@ namespace TBot.Bot
             else if (chatState != ChatState.Admin && segments[0] != "login")
             {
                 return TgResult.NotHandled;
+            }
+
+            if (chatState == ChatState.Admin)
+            {
+                // Refresh chat state to prevent expiration while admin is active
+                registrationService.SetChatState(userId, chatId, ChatState.Admin);
             }
 
             var command = segments[0].ToLowerInvariant();
@@ -152,9 +162,63 @@ namespace TBot.Bot
                     {
                         return await RemoveScheduledMessageVariant(chatId, segments);
                     }
+                case "send_mass_direct_message":
+                    {
+                        return await SendMassDirectMessage(userId, chatId, noPrefix, segments);
+                    }
+                case "confirm_mass_direct_message":
+                    {
+                        return await ConfirmMassDirectMessage(chatId, segments);
+                    }
                 case "nodeinfo":
                     {
                         return await ShowNodeInfo(chatId, segments);
+                    }
+
+                case "queue_status":
+                    {
+                        return await ShowQueueStatus(chatId, segments);
+                    }
+                case "help":
+                    {
+                        var lines = new List<string>
+                        {
+                            "Available admin commands:",
+                            "",
+                            "login - Log in to admin mode",
+                            "logout - Log out of admin mode",
+                            "public_text_primary - Send public text message to primary public channel of the network",
+                            "public_text -  Send public text message to public channel",
+                            "trace - Start tracing the route to a node",
+                            "text - Send direct text to node",
+                            "remove_node - Remove node from TMesh",
+                            "add_gateway - Add a new gateway",
+                            "remove_gateway - Remove a gateway",
+                            "list_gateways - List all registered gateways",
+                            "list_networks - List all networks",
+                            "add_network - Add new network",
+                            "update_network - Update network settings",
+                            "remove_network - Remove network if there are no registered devices or channels",
+                            "add_public_channel - Add public channel to the network",
+                            "update_public_channel - Change public channel settings",
+                            "remove_public_channel - Remove public channel",
+                            "add_scheduled_message - Add a scheduled message to send to public channel",
+                            "delete_scheduled_message - Delete a scheduled message",
+                            "toggle_scheduled_message - Enable/disable scheduled message",
+                            "change_scheduled_message_channel - Move scheduled message to different public channel",
+                            "list_scheduled_messages - Show all scheduled messages",
+                            "add_scheduled_message_variant - Adds scheduled message text variant",
+                            "remove_scheduled_message_variant - Removes scheduled message text variant",
+                            "send_mass_direct_message - Prepares mass direct message",
+                            "confirm_mass_direct_message - Sends prepared mass direct text message",
+                            "nodeinfo - find node my id",
+                            "queue_status - shows send queues status",
+                            "",
+                            "Please type command name without arguments to see syntax help."
+                        };
+
+                        await botClient.SendLongMessage(chatId, lines);
+                        return TgResult.Ok;
                     }
 
                 default:
@@ -561,7 +625,7 @@ namespace TBot.Bot
             }
 
             (var ok, var updated) = await registrationService.TryUpdatePublicChannelAsync(
-                channelId, 
+                channelId,
                 isPrimary,
                 sendNodeInfoOnSecondary);
 
@@ -672,7 +736,28 @@ namespace TBot.Bot
 
             var hexId = MeshtasticService.GetMeshtasticNodeHexId(parsedNodeId);
 
-            await botClient.SendMessage(chatId, $"Started tracing node `{(device != null? device.NodeName + $" ({hexId})" : hexId)}` in network [{networkId.Value}] \"{network.Name}\". You will receive updates in this chat as the trace route progresses.");
+            await botClient.SendMessage(chatId, $"Started tracing node `{(device != null ? device.NodeName + $" ({hexId})" : hexId)}` in network [{networkId.Value}] \"{network.Name}\". You will receive updates in this chat as the trace route progresses.");
+
+            return TgResult.Ok;
+        }
+
+        private async Task<TgResult> ShowQueueStatus(long chatId, string[] segements)
+        {
+            // Usage: /admin queue_status <networkId>
+            if (segements.Length < 2 || !int.TryParse(segements[1], out var networkId))
+            {
+                await botClient.SendMessage(chatId, "Usage: /admin queue_status <networkId>\nExample: /admin queue_status 1");
+                return TgResult.Ok;
+            }
+
+            var highPriorityCount = meshtasticService.GetQueueLength(networkId, MessagePriority.High);
+            var normalPriorityCount = meshtasticService.GetQueueLength(networkId, MessagePriority.Normal);
+            var lowPriorityCount = meshtasticService.GetQueueLength(networkId, MessagePriority.Low);
+
+            await botClient.SendMessage(chatId, $"Message queue status for network [{networkId}]:\n" +
+                $"High priority: {highPriorityCount}\n" +
+                $"Normal priority: {normalPriorityCount}\n" +
+                $"Low priority: {lowPriorityCount}");
 
             return TgResult.Ok;
         }
@@ -1085,6 +1170,199 @@ namespace TBot.Bot
             => DateTime.TryParseExact(value, LocalDateFormat,
                 System.Globalization.CultureInfo.InvariantCulture,
                 System.Globalization.DateTimeStyles.None, out result);
+
+
+        public static bool IsValidRegexPattern(string pattern)
+        {
+            if (string.IsNullOrWhiteSpace(pattern))
+                return false;
+
+            try
+            {
+                _ = new Regex(pattern);
+                return true;
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+        }
+
+        private async Task<TgResult> ConfirmMassDirectMessage(long chatId, string[] segments)
+        {
+            // Usage: confirm_mass_direct_message <code>
+
+            if (segments.Length < 2)
+            {
+                await botClient.SendMessage(chatId, "Usage: confirm_mass_direct_message <code>");
+                return TgResult.Ok;
+            }
+
+            var code = segments[1];
+            var msg = botCache.GetMassDirectMessage(code);
+            if (msg == null)
+            {
+                await botClient.SendMessage(chatId, $"No mass direct message found for code: {code}");
+                return TgResult.Ok;
+            }
+
+            DateTime? activeAfterUtc = msg.MaxNodeAgeHours.HasValue ? DateTime.UtcNow.AddHours(-msg.MaxNodeAgeHours.Value) : (DateTime?)null;
+
+            var deviceKeys = await registrationService.GetDeviceKeysForMassDirectMessage(
+                msg.NetworkId,
+                activeAfterUtc,
+                msg.NodeNameRegexPattern,
+                maxRecords: null);
+
+            foreach (var deviceKey in deviceKeys)
+            {
+                meshtasticService.SendDirectTextMessage(
+                     deviceKey.DeviceId,
+                     deviceKey.NetworkId,
+                     deviceKey.PublicKey,
+                        msg.Text,
+                        replyToMessageId: null,
+                        relayGatewayId: botCache.GetDeviceGateway(deviceKey.DeviceId)?.GatewayId,
+                        hopLimit: int.MaxValue,
+                        priority: MessagePriority.Low
+                    );
+            }
+
+            await botClient.SendMessage(chatId,
+                $"Mass direct message queued to {deviceKeys.Count} devices in network [{msg.NetworkId}].\n" +
+                $"Check status with /admin queue_status\n" +
+                $"Message text: {msg.Text}\n" +
+                (msg.MaxNodeAgeHours.HasValue ? $"- Max node age: {msg.MaxNodeAgeHours.Value} hours\n" : "") +
+                (!string.IsNullOrEmpty(msg.NodeNameRegexPattern) ? $"- Node name filter regex: {msg.NodeNameRegexPattern}\n" : ""));
+
+            return TgResult.Ok;
+        }
+
+        private async Task<TgResult> SendMassDirectMessage(long userId, long chatId, string noPrefix, string[] segments)
+        {
+            // Usage: send_mass_direct_message network=<network_id> text="<message text>" [max_node_age_hours=<hours>] [node_name_filter_regex="regex"]
+            if (segments.Length < 3 || !noPrefix.Contains("text=\"") || !noPrefix.Contains("network_id="))
+            {
+                await botClient.SendMessage(chatId,
+                    "Usage: send_mass_direct_message network_id=<network_id> text=\"<message text>\" [max_node_age_hours=<hours>] [node_name_filter_regex=\"regex\"]\n" +
+                    "Example: send_mass_direct_message network_id=1 text=\"Hello mesh!\" max_node_age_hours=24 node_name_filter_regex=\"^Node.*\"\n" +
+                    "Use \\\" to include double quotes in the message text or regex.\n" +
+                    "max_node_age_hours filters out devices that have not been seen in the last specified hours. node_name_filter_regex filters devices by their name using a regular expression.");
+
+                return TgResult.Ok;
+            }
+
+            var workingString = noPrefix;
+
+            var textMatch = System.Text.RegularExpressions.Regex.Match(
+                workingString, @"text=""((?:[^""\\]|\\.)*)""");
+
+            if (!textMatch.Success)
+            {
+                await botClient.SendMessage(chatId,
+                    "Could not parse text parameter. Use: text=\"your message here\"");
+                return TgResult.Ok;
+            }
+            var text = textMatch.Groups[1].Value.Replace("\\\"", "\"");
+
+            //remove string text="..." from
+            workingString = noPrefix.Remove(textMatch.Index, textMatch.Length).Trim();
+
+
+            string nodeNameRegexPattern = null;
+
+            var regexMatch = System.Text.RegularExpressions.Regex.Match(
+                workingString, @"node_name_filter_regex=""((?:[^""\\]|\\.)*)""");
+
+            if (regexMatch.Success)
+            {
+                nodeNameRegexPattern = regexMatch.Groups[1].Value.Replace("\\\"", "\"");
+                if (!IsValidRegexPattern(nodeNameRegexPattern))
+                {
+                    await botClient.SendMessage(chatId,
+                        $"Invalid regular expression pattern for node_name_filter_regex: '{nodeNameRegexPattern}'. Please provide a valid regex pattern.");
+                    return TgResult.Ok;
+                }
+                workingString = workingString.Remove(regexMatch.Index, regexMatch.Length).Trim();
+            }
+
+
+            var maxAgeHoursMatch = Regex.Match(
+                workingString, @"max_node_age_hours=(\d+)");
+
+            int? maxAgeHours = null;
+            if (maxAgeHoursMatch.Success)
+            {
+                if (int.TryParse(maxAgeHoursMatch.Groups[1].Value, out var hours) && hours > 0)
+                {
+                    maxAgeHours = int.Parse(maxAgeHoursMatch.Groups[1].Value);
+                }
+                else
+                {
+                    await botClient.SendMessage(chatId,
+                        $"Invalid value for max_node_age_hours: '{maxAgeHoursMatch.Groups[1].Value}'. It must be a positive integer.");
+                    return TgResult.Ok;
+                }
+                workingString = workingString.Remove(maxAgeHoursMatch.Index, maxAgeHoursMatch.Length).Trim();
+            }
+
+            var networkIdMatch = System.Text.RegularExpressions.Regex.Match(
+                workingString, @"network_id=(\d+)");
+
+            if (!networkIdMatch.Success || !int.TryParse(networkIdMatch.Groups[1].Value, out var networkId))
+            {
+                await botClient.SendMessage(chatId,
+                    $"Invalid or missing network ID. Please specify a valid integer network ID using network_id=<network_id>.");
+                return TgResult.Ok;
+            }
+
+            workingString = workingString.Remove(networkIdMatch.Index, networkIdMatch.Length).Trim();
+
+            var network = await registrationService.GetNetwork(networkId);
+            if (network == null)
+            {
+                await botClient.SendMessage(chatId, $"Network with ID {networkId} not found.");
+                return TgResult.Ok;
+            }
+
+            var msg = new MassDirectMessage
+            {
+                MaxNodeAgeHours = maxAgeHours,
+                Text = text,
+                NetworkId = networkId,
+                NodeNameRegexPattern = nodeNameRegexPattern
+            };
+
+            var code = RegistrationService.GenerateRandomCode();
+            botCache.StoreMassDirectMessage(code, msg);
+
+            DateTime? activeAfterUtc = maxAgeHours.HasValue ? DateTime.UtcNow.AddHours(-maxAgeHours.Value) : (DateTime?)null;
+
+            (var deviceCount, var sampleNames) = await registrationService.GetDeviceCountForMassDirectMessage(networkId, activeAfterUtc, nodeNameRegexPattern, sampleSize: 10);
+
+
+            var sampleNamesSb = new StringBuilder();
+            foreach (var name in sampleNames)
+            {
+                if (sampleNamesSb.Length > 0)
+                {
+                    sampleNamesSb.Append(", ");
+                }
+                sampleNamesSb.Append(name);
+            }
+
+            await botClient.SendMessage(chatId,
+                $"Mass direct message setup:\n" +
+                $"- Network: [{networkId}] \"{network.Name}\"\n" +
+                $"- Text: {text}\n" +
+                (maxAgeHours.HasValue ? $"- Max node age: {maxAgeHours.Value} hours\n" : "") +
+                (!string.IsNullOrEmpty(nodeNameRegexPattern) ? $"- Node name filter regex: {nodeNameRegexPattern}\n" : "") +
+                $"Devices matching criteria: {deviceCount}\n" +
+                $"Sample names: {sampleNamesSb}\n" +
+                $"To confirm sending the message to all matching devices, please execute command /admin confirm_mass_direct_message {code}");
+
+            return TgResult.Ok;
+        }
 
         private async Task<TgResult> AddScheduledMessage(long chatId, string noPrefix, string[] segments)
         {

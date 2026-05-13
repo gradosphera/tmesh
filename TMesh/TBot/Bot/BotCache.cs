@@ -7,6 +7,7 @@ using TBot.Database;
 using TBot.Database.Models;
 using TBot.Helpers;
 using TBot.Models;
+using TBot.Models.Admin;
 using TBot.Models.ChatSession;
 using TBot.Models.MeshMessages;
 using Telegram.Bot;
@@ -531,6 +532,22 @@ namespace TBot.Bot
         public bool IsMessageSentByOurNode(long messageId)
         {
             return memoryCache.TryGetValue<bool>($"SentByOurNode_{messageId}", out _);
+        }
+
+        public void StoreMassDirectMessage(string code, MassDirectMessage msg)
+        {
+            var key = $"MassDirectMessage_{code}";
+            memoryCache.Set(key, msg, TimeSpan.FromMinutes(10));
+        }
+
+        public MassDirectMessage GetMassDirectMessage(string code)
+        {
+            var key = $"MassDirectMessage_{code}";
+            if (memoryCache.TryGetValue<MassDirectMessage>(key, out var msg))
+            {
+                return msg;
+            }
+            return null;
         }
     }
 }

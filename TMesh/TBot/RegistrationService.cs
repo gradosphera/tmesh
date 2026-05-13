@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Text.RegularExpressions;
 using TBot.Bot;
 using TBot.Database;
 using TBot.Database.Models;
@@ -786,7 +787,7 @@ namespace TBot
                 res = SaveResult.Inserted;
             }
             else if (_options.SkipNodeUpdateIfHardwareNotMatch
-                && ((entity.HardwareModel != null 
+                && ((entity.HardwareModel != null
                     && entity.HardwareModel != hardwareModel)
                 || (entity.MacAddress != null
                     && entity.MacAddress != macAddress)))
@@ -1104,26 +1105,105 @@ namespace TBot
             return await db.Devices.CountAsync(d => d.NetworkId == networkId && d.UpdatedUtc >= fromUtc);
         }
 
-        public async Task<int> GetActiveDevicesCountByNetworkAndPrefix(int networkId, DateTime fromUtc, string prefix)
+
+        public async Task<(int totalCount, string[] sampleNames)> GetDeviceCountForMassDirectMessage(
+            int networkId, 
+            DateTime? activeAfterUtc, 
+            string nameRegexPattern,
+            int sampleSize)
         {
-            return await db.Devices.CountAsync(d => d.NetworkId == networkId && d.UpdatedUtc >= fromUtc && d.NodeName.StartsWith(prefix));
+            var devicesQuery = db.Devices.Where(d => d.NetworkId == networkId);
+
+            if (activeAfterUtc.HasValue)
+            {
+                devicesQuery = devicesQuery.Where(d => d.UpdatedUtc >= activeAfterUtc.Value);
+            }
+
+            if (string.IsNullOrEmpty(nameRegexPattern))
+            {
+                int count = await devicesQuery.CountAsync();
+                var sampleNames = await devicesQuery.Select(d => d.NodeName).Take(sampleSize).ToArrayAsync();
+                return (count, sampleNames);
+            }
+            else
+            {
+                var names = await devicesQuery.Select(d => d.NodeName).ToListAsync();
+                var regex = new Regex(nameRegexPattern, RegexOptions.IgnoreCase);
+                int count = names.Count(n => regex.IsMatch(n));
+                var sampleNames = names.Where(n => regex.IsMatch(n)).Take(sampleSize).ToArray();
+                return (count, sampleNames);
+            }
+        }
+
+        public async Task<List<DeviceKey>> GetDeviceKeysForMassDirectMessage(
+            int networkId,
+            DateTime? activeAfterUtc,
+            string nameRegexPattern,
+            int? maxRecords)
+        {
+            var devicesQuery = db.Devices.Where(d => d.NetworkId == networkId);
+
+            if (activeAfterUtc.HasValue)
+            {
+                devicesQuery = devicesQuery.Where(d => d.UpdatedUtc >= activeAfterUtc.Value);
+            }
+
+            if (string.IsNullOrEmpty(nameRegexPattern))
+            {
+                if (maxRecords.HasValue)
+                {
+                    devicesQuery = devicesQuery.Take(maxRecords.Value);
+                }
+
+                return await devicesQuery.Select(d => new DeviceKey
+                {
+                    DeviceId = d.DeviceId,
+                    NetworkId = d.NetworkId,
+                    PublicKey = d.PublicKey
+                }).ToListAsync();
+            }
+
+            var all = await devicesQuery.Select(d => new
+            {
+                d.NodeName,
+                d.DeviceId,
+                d.NetworkId,
+                d.PublicKey
+            }).ToListAsync();
+
+            var regex = new Regex(nameRegexPattern, RegexOptions.IgnoreCase);
+
+            var filtered = all.Where(n => regex.IsMatch(n.NodeName))
+                .Select(n => new DeviceKey
+                {
+                    DeviceId = n.DeviceId,
+                    NetworkId = n.NetworkId,
+                    PublicKey = n.PublicKey
+                });
+
+            if (maxRecords.HasValue)
+            {
+                filtered = filtered.Take(maxRecords.Value);
+            }
+
+            return filtered.ToList();
         }
 
         public async Task<List<DeviceNameForVote>> GetActiveDevicesNamesForVote(int networkId, DateTime fromUtc)
         {
             return await db.Devices.Where(d => d.NetworkId == networkId
                 && d.UpdatedUtc >= fromUtc)
-                .Select(x=> new DeviceNameForVote
+                .Select(x => new DeviceNameForVote
                 {
-                     DeviceId = x.DeviceId,
-                     UpdatedUtc = x.UpdatedUtc,
-                     NodeCreatedUtc = x.CreatedUtc,
-                     LastNodeInfoPacketId = x.LastUpdatePacketId,
-                     IsLocationPublic = x.IsLocationPublic,
-                     Latitude = x.Latitude,
-                     Longitude = x.Longitude,
-                     NetworkId = x.NetworkId,
-                     NodeName = x.NodeName
+                    DeviceId = x.DeviceId,
+                    UpdatedUtc = x.UpdatedUtc,
+                    NodeCreatedUtc = x.CreatedUtc,
+                    LastNodeInfoPacketId = x.LastUpdatePacketId,
+                    IsLocationPublic = x.IsLocationPublic,
+                    Latitude = x.Latitude,
+                    Longitude = x.Longitude,
+                    NetworkId = x.NetworkId,
+                    NodeName = x.NodeName
                 }).ToListAsync();
         }
 
@@ -1637,21 +1717,21 @@ namespace TBot
         public async Task<List<ScheduledMessaageForList>> ListScheduledMessagesAsync()
         {
             var res = await (from m in db.ScheduledMessages
-                      join c in db.PublicChannels on m.PublicChannelId equals c.Id into lj1
-                      from c in lj1.DefaultIfEmpty()
-                      select new ScheduledMessaageForList
-                      {
-                          Id = m.Id,
-                          Enabled = m.Enabled,
-                          Text = m.Text,
-                          IntervalMinutes = m.IntervalMinutes,
-                          LastSentUtc = m.LastSentUtc,
-                          EnableAt = m.EnableAt,
-                          DisableAt = m.DisableAt,
-                          LastSentVariantIndex = m.LastSentVariantIndex,
-                          PublicChannelId = m.PublicChannelId,
-                          Channel = c
-                      }).ToListAsync();
+                             join c in db.PublicChannels on m.PublicChannelId equals c.Id into lj1
+                             from c in lj1.DefaultIfEmpty()
+                             select new ScheduledMessaageForList
+                             {
+                                 Id = m.Id,
+                                 Enabled = m.Enabled,
+                                 Text = m.Text,
+                                 IntervalMinutes = m.IntervalMinutes,
+                                 LastSentUtc = m.LastSentUtc,
+                                 EnableAt = m.EnableAt,
+                                 DisableAt = m.DisableAt,
+                                 LastSentVariantIndex = m.LastSentVariantIndex,
+                                 PublicChannelId = m.PublicChannelId,
+                                 Channel = c
+                             }).ToListAsync();
 
             var networks = await GetNetworksLookupCached();
             foreach (var msg in res.Where(x => x.Channel != null))
@@ -1676,12 +1756,12 @@ namespace TBot
         public async Task<List<(ScheduledMessage Message, PublicChannel Channel, List<ScheduledMessageVariant> Variants)>> GetDueScheduledMessagesAsync(DateTime now)
         {
             var due = await (from m in db.ScheduledMessages
-                             join c in db.PublicChannels on m.PublicChannelId equals c.Id 
-                             where 
+                             join c in db.PublicChannels on m.PublicChannelId equals c.Id
+                             where
                                 m.Enabled
                                 && (m.LastSentUtc == null
                                     || now >= m.LastSentUtc.Value.AddMinutes(m.IntervalMinutes))
-                             select new 
+                             select new
                              {
                                  Message = m,
                                  Channel = c
