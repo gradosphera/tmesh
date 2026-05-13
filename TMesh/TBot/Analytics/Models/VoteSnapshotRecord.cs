@@ -13,5 +13,6 @@ namespace TBot.Analytics.Models
         public uint DeviceId { get; set; }
         public string LongName { get; set; }
         public byte OptionId { get; set; }
+        public Instant? LastVote { get; set; }
     }
 }

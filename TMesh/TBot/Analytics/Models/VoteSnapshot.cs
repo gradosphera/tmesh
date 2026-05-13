@@ -13,6 +13,7 @@ namespace TBot.Analytics.Models
         public int VoteId { get; set; }
         public Instant Timestamp { get; set; }
         public int? PreviousSnapshotId { get; set; }
+        public long? WinnerDeviceId { get; set; }
 
     }
 }

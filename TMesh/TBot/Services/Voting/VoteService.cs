@@ -1,6 +1,7 @@
 ﻿using NetTopologySuite.Geometries;
 using NodaTime;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -37,6 +38,7 @@ namespace TBot.Services.Voting
         //    analyticsService.Add(vote);
         //    await analyticsService.SaveChanges();
         //}
+
 
         public async Task ProcessVotes()
         {
@@ -122,6 +124,7 @@ namespace TBot.Services.Voting
             var newParticipants = new List<VoteParticipant>();
             var newLogs = new List<VoteLog>();
 
+
             foreach (var device in devices)
             {
                 var participant = participantLookup.GetValueOrDefault((uint)device.DeviceId);
@@ -166,12 +169,15 @@ namespace TBot.Services.Voting
 
                 stat.ActiveCount++;
 
+                var updatedInstant = Instant.FromDateTimeUtc(DateTime.SpecifyKind(device.UpdatedUtc.AddSeconds(1), DateTimeKind.Utc));
+
                 var newSnapshotRecord = new VoteSnapshotRecord
                 {
                     SnapshotId = newSnapshot.Id,
                     DeviceId = (uint)device.DeviceId,
                     LongName = deviceName,
-                    OptionId = currentVote
+                    OptionId = currentVote,
+                    LastVote = updatedInstant
                 };
 
                 newSnapshotRecords.Add(newSnapshotRecord);
@@ -184,7 +190,6 @@ namespace TBot.Services.Voting
                     }
                 }
 
-                var updatedInstant = Instant.FromDateTimeUtc(DateTime.SpecifyKind(device.UpdatedUtc.AddSeconds(1), DateTimeKind.Utc));
                 if (participant != null)
                 {
                     participant.LongName = deviceName;
@@ -300,8 +305,13 @@ namespace TBot.Services.Voting
                 newLogs.Add(log);
             }
 
+
+
+            newSnapshot.WinnerDeviceId = SelectVoteGameWinnerAndSetWinnerIndexes(newSnapshotRecords);
+
             vote.LastUpdate = instantNow;
             vote.LastSnapshotId = newSnapshot.Id;
+
 
             // Compute deltas once, after all active-device counts are finalised
             foreach (var stat in newStats.Values)
@@ -323,6 +333,42 @@ namespace TBot.Services.Voting
             analyticsService.AddRange(newLogs);
 
             await analyticsService.SaveChanges();
+        }
+
+        private long? SelectVoteGameWinnerAndSetWinnerIndexes(List<VoteSnapshotRecord> allDevices)
+        {
+            //1) Sort by last vote
+            //2) Get sha512 hash or concatinated node is in hex with ! in UTF8
+            //3) Divide hash as number by number of participants and get modulo, add 1 to get 1-based index of winner
+
+            var sortedRecordsWithVote = allDevices
+                .Where(x => x.OptionId != NoVote)
+                .OrderBy(r => r.LastVote)
+                .ThenBy(x => x.DeviceId)
+                .ToList();
+
+            if (sortedRecordsWithVote.Count == 0)
+            {
+                return null;
+            }
+
+            using var sha512 = System.Security.Cryptography.SHA512.Create();
+
+            foreach (var record in sortedRecordsWithVote)
+            {
+                var hexId = MeshtasticService.GetMeshtasticNodeHexId(record.DeviceId);
+                var hexBytes = System.Text.Encoding.UTF8.GetBytes(hexId);
+                sha512.TransformBlock(hexBytes, 0, hexBytes.Length, null, 0);
+            }
+
+            sha512.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+            var hash = sha512.Hash;
+            var bignumber = new System.Numerics.BigInteger(hash, isUnsigned: true, isBigEndian: true);
+            var winnerIndex = bignumber % sortedRecordsWithVote.Count;
+            var winner = sortedRecordsWithVote[(int)winnerIndex];
+
+            return winner.DeviceId;
+
         }
 
 

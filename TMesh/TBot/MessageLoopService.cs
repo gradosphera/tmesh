@@ -51,7 +51,9 @@ public class MessageLoopService(
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         uptimeService.Reset();
+
         using var scope = services.CreateScope();
+
         await FillGatewayIds(scope);
         await FillPrimaryChannels(scope);
         await botCache.Start(scope);
@@ -840,6 +842,11 @@ public class MessageLoopService(
 
         var primaryChannel = await registrationService.GetNetworkPrimaryChannelCached(msg.NetworkId);
         if (primaryChannel == null || primaryChannel.Id != msg.DecodedBy.RecipientPublicChannelId)
+        {
+            return;
+        }
+
+        if (!await analyticsService.NetworkHasActiveVotesCached(msg.NetworkId))
         {
             return;
         }

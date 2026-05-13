@@ -13,7 +13,7 @@ using TBot.Helpers;
 
 namespace TBot.Analytics
 {
-    public class AnalyticsService(AnalyticsDbContext db, TimeZoneHelper tz)
+    public class AnalyticsService(AnalyticsDbContext db, TimeZoneHelper tz, IMemoryCache cache)
     {
         public async Task RecordEventAsync(DeviceMetric metrics)
         {
@@ -97,6 +97,16 @@ namespace TBot.Analytics
                 .Where(v => v.IsActive)
                 .Include(v => v.Options)
                 .ToListAsync();
+        }
+
+        public async ValueTask<bool> NetworkHasActiveVotesCached(int networkId)
+        {
+            return await cache.GetOrCreateAsync($"NetworkHasActiveVotes_{networkId}", async entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(60);
+                return await db.Votes
+                    .AnyAsync(v => v.IsActive && v.NetworkId == networkId);
+            });
         }
 
         public async Task DeactiveVote(int id)
