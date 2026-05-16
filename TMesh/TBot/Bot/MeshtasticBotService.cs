@@ -74,15 +74,19 @@ namespace TBot.Bot
 
         private async Task SendNoPublicKeyNak(MeshMessage message)
         {
-            var primaryChannel = await registrationService.GetNetworkPrimaryChannelCached(message.NetworkId);
-            if (primaryChannel != null)
+            var primaryChannel = message.DecodedBy.IsPublicChannel ? message.DecodedBy : null;
+
+            if (primaryChannel == null)
             {
-                meshtasticService.NakNoPubKeyMeshtasticMessage(message, meshSender.GetReplyGatewayId(message), primaryChannel);
+                primaryChannel = await registrationService.GetNetworkPrimaryChannelCached(message.NetworkId);
+                if (primaryChannel == null)
+                {
+                    logger.LogWarning("Received encrypted direct message for network {NetworkId} without primary channel, cannot send ack", message.NetworkId);
+                    return;
+                }
             }
-            else
-            {
-                logger.LogWarning("Received encrypted direct message for network {NetworkId} without primary channel, cannot send ack", message.NetworkId);
-            }
+
+            meshtasticService.NakNoPubKeyMeshtasticMessage(message, meshSender.GetReplyGatewayId(message), primaryChannel);
         }
 
         private async Task ProcessInboundDeviceMetricsMessage(DeviceMetricsMessage message, Device deviceOrNull)
@@ -833,7 +837,8 @@ namespace TBot.Bot
                 message.NodeInfo.HardwareModel,
                 message.NodeInfo.MacAddr,
                 message.PublicKey,
-                message.Id);
+                message.Id,
+                MeshtasticService.ConvertDeviceRole(message.NodeInfo.Role));
 
             if (message.NeedAck && res.device != null && res.device.PublicKey != null)
             {
@@ -871,14 +876,19 @@ namespace TBot.Bot
                         messageText = welcomePart.Replace("{url}", network.WelcomeUrl);
                     }
 
-                    var primaryChannel = await registrationService.GetNetworkPrimaryChannelCached(message.NetworkId);
+                    var primaryChannel = message.DecodedBy.IsPublicChannel ? message.DecodedBy : null;
+
+                    if (primaryChannel == null)
+                    {
+                        primaryChannel = await registrationService.GetNetworkPrimaryChannelCached(message.NetworkId);
+                    }
                     if (primaryChannel == null)
                     {
                         return;
                     }
 
                     meshtasticService.SendVirtualNodeInfo(
-                         primaryChannel.Name,
+                         (primaryChannel as PublicChannel)?.Name ?? MeshtasticService.UnknownChannelName,
                          primaryChannel,
                          message.GetSuggestedReplyHopLimit(),
                          destinationDeviceId: message.DeviceId,

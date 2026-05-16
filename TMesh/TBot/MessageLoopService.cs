@@ -1,6 +1,7 @@
 using Google.Protobuf;
 using Google.Protobuf.Collections;
 using Meshtastic.Protobufs;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -120,6 +121,7 @@ public class MessageLoopService(
             if ((DateTime.UtcNow - _lastVirtualNodeInfoSent).TotalSeconds >= _options.SentTBotNodeInfoEverySeconds)
             {
                 await SendVirtualNodeInfo(scope);
+
             }
 
             await PublishStats(scope);
@@ -135,6 +137,8 @@ public class MessageLoopService(
 
             var nextUpdate = start.AddMilliseconds(_serviceInfoTimer.Interval);
             await ProcessVotes(scope, nextUpdate);
+
+            await RefreshAnalytics(scope);
         }
         catch (Exception ex)
         {
@@ -148,7 +152,7 @@ public class MessageLoopService(
 
     private async Task ProcessVotes(IServiceScope scope, DateTime nextUpdate)
     {
-        
+
         var voteService = scope.ServiceProvider.GetService<VoteService>();
         if (voteService == null)
         {
@@ -289,6 +293,24 @@ public class MessageLoopService(
         }
     }
 
+    private DateTime _last_analyticsRefresh;
+
+    private async ValueTask RefreshAnalytics(IServiceScope scope)
+    {
+        var analyticsService = scope.ServiceProvider.GetService<AnalyticsService>();
+        if (analyticsService == null)
+        {
+            return;
+        }
+
+        if (DateTime.UtcNow.Subtract(_last_analyticsRefresh).TotalMinutes < 15)
+        {
+            return;
+        }
+        _last_analyticsRefresh = DateTime.UtcNow;
+        await analyticsService.Aggregates15MinRefresh();
+    }
+
     private async Task PublishStats(IServiceScope scope)
     {
         var now = DateTime.UtcNow;
@@ -327,15 +349,15 @@ public class MessageLoopService(
 
                 var activeVotes = await analyticsService.GetActiveNetworkVotesLatestStats(network.Id);
 
-                networkStats.ActiveVotes = activeVotes.Where(x=>x.LastUpdate.HasValue).GroupBy(x=> new { x.VoteId, LastUpdateTs = x.LastUpdate.Value.ToUnixTimeSeconds() })
+                networkStats.ActiveVotes = activeVotes.Where(x => x.LastUpdate.HasValue).GroupBy(x => new { x.VoteId, LastUpdateTs = x.LastUpdate.Value.ToUnixTimeSeconds() })
                     .Select(v => new ActiveVoteStats
                     {
                         VoteId = v.Key.VoteId,
                         LastUpdateTimestampSec = v.Key.LastUpdateTs,
                         Stats = v.Select(v => new VoteChoice
                         {
-                             Id = v.OptionId,
-                             ActiveCount = v.ActiveCount,
+                            Id = v.OptionId,
+                            ActiveCount = v.ActiveCount,
                         }).ToList()
                     }).ToList();
 
@@ -550,6 +572,12 @@ public class MessageLoopService(
                 await SaveNodeInfoFromEnvelope(scope, networkId, tmeshOrMapGatewayId, env, isTMeshGateway: isTMeshGateway);
                 return;
             }
+            else if (meshtasticService.IsPreviouslySeenTraceRoute(env))
+            {
+                scope ??= services.CreateScope();
+                await SaveTraceRouteFromEnvelope(scope, networkId, tmeshOrMapGatewayId, env, isTMeshGateway: isTMeshGateway);
+                return;
+            }
 
             if (!meshtasticService.TryStoreNoDup(env.Packet.Id))
             {
@@ -609,8 +637,7 @@ public class MessageLoopService(
                 return;
             }
 
-            if (res.msg != null
-                && res.msg.MessageType == MeshMessageType.NodeInfo
+            if (res.msg.MessageType == MeshMessageType.NodeInfo
                 && res.msg is NodeInfoMessage nim)
             {
                 if (nim.DeviceId == _options.MeshtasticNodeId)
@@ -640,6 +667,14 @@ public class MessageLoopService(
                 : ValueTask.CompletedTask;
 
             await Task.WhenAll(t1.AsTask(), t2.AsTask());
+
+
+            if (res.msg.MessageType == MeshMessageType.TraceRoute
+                && res.msg is TraceRouteMessage trm
+                && trm.ToDeviceId != _options.MeshtasticNodeId)
+            {
+                return;
+            }
 
             if (res.msg.MessageType == MeshMessageType.Unknown)
             {
@@ -806,6 +841,10 @@ public class MessageLoopService(
             {
                 await SaveNodeInfo(scope, (NodeInfoMessage)msg);
             }
+            else if (msg.MessageType == MeshMessageType.TraceRoute)
+            {
+                await SaveTraceRoute(scope, (TraceRouteMessage)msg);
+            }
         }
         catch (Exception ex)
         {
@@ -815,8 +854,8 @@ public class MessageLoopService(
 
     private async Task SaveNodeInfoFromEnvelope(
         IServiceScope scope,
-        int networkId, 
-        long gatewayId, 
+        int networkId,
+        long gatewayId,
         ServiceEnvelope env,
         bool isTMeshGateway)
     {
@@ -833,6 +872,48 @@ public class MessageLoopService(
             return;
 
         await SaveNodeInfo(scope, nodeInfoMsg);
+    }
+
+    private async Task SaveTraceRouteFromEnvelope(
+        IServiceScope scope,
+        int networkId,
+        long gatewayId,
+        ServiceEnvelope env,
+        bool isTMeshGateway)
+    {
+        var registrationService = scope.ServiceProvider.GetRequiredService<RegistrationService>();
+        var primaryChannel = await registrationService.GetNetworkPrimaryChannelCached(networkId);
+        if (primaryChannel == null)
+        {
+            logger.LogWarning("Primary channel not found for network ID {NetworkId}, cannot save node info", networkId);
+            return;
+        }
+
+        var res = meshtasticService.TryDecryptMessage(env, [primaryChannel], networkId, isTMeshGateway);
+        if (!res.success || res.msg is not TraceRouteMessage traceRouteMsg)
+            return;
+
+        await SaveTraceRoute(scope, traceRouteMsg);
+    }
+
+    private async ValueTask SaveTraceRoute(IServiceScope scope, TraceRouteMessage msg)
+    {
+        var analyticsService = scope.ServiceProvider.GetService<AnalyticsService>();
+        if (analyticsService == null)
+        {
+            return;
+        }
+
+        var registrationService = scope.ServiceProvider.GetRequiredService<RegistrationService>();
+        var network = await registrationService.GetNetwork(msg.NetworkId);
+        if (network == null || !network.SaveAnalytics)
+        {
+            return;
+        }
+        meshtasticService.MarkAsTraceRoute(msg.Id);
+        await analyticsService.SaveTraceRoute(msg);
+
+        return;
     }
 
     private async ValueTask SaveNodeInfo(IServiceScope scope, NodeInfoMessage msg)

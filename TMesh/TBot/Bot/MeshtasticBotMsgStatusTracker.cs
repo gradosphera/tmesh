@@ -348,11 +348,15 @@ namespace TBot.Bot
                 if (item.Error == Routing.Types.Error.PkiUnknownPubkey
                     && item.DeviceId != MeshtasticService.BroadcastDeviceId)
                 {
-                    var primaryChannel = await regService.GetNetworkPrimaryChannelCached(item.NetworkId);
+                    var primaryChannel = item.DecodedBy.IsPublicChannel ? item.DecodedBy : null;
+                    if (primaryChannel == null)
+                    {
+                        primaryChannel = await regService.GetNetworkPrimaryChannelCached(item.NetworkId);
+                    }
                     if (primaryChannel != null)
                     {
                         meshtasticService.SendVirtualNodeInfo(
-                            primaryChannel.Name,
+                            (primaryChannel as PublicChannel)?.Name ?? MeshtasticService.UnknownChannelName,
                             primaryChannel,
                             item.GetSuggestedReplyHopLimit(),
                             item.DeviceId,

@@ -21,9 +21,41 @@ public class AnalyticsDbContext(DbContextOptions<AnalyticsDbContext> options) : 
     public DbSet<VoteOption> VoteOptions => Set<VoteOption>();
     public DbSet<City> Cities => Set<City>();
     public DbSet<CityDistrict> CityDistricts => Set<CityDistrict>();
+    public DbSet<TraceRoutePairStat> TraceRoutePairStats => Set<TraceRoutePairStat>();
+    public DbSet<TraceRoutePair> TraceRoutePairs => Set<TraceRoutePair>();
+    public DbSet<TracePairDevice> TracePairDevices => Set<TracePairDevice>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<TracePairDevice>(e =>
+        {
+            e.HasKey(r => new { r.NetworkId, r.RecDate, r.Id });
+            e.Property(r => r.NetworkId).IsRequired();
+            e.Property(r => r.RecDate).IsRequired();
+            e.Property(r => r.Id).IsRequired();
+            e.Property(r => r.Name).HasMaxLength(200);
+        });
+
+        modelBuilder.Entity<TraceRoutePair>(e =>
+        {
+            e.HasKey(r => r.Id);
+            e.Property(r => r.Id).IsRequired().ValueGeneratedOnAdd();
+            e.Property(r => r.NetworkId).IsRequired();
+        });
+
+        modelBuilder.Entity<TraceRoutePairStat>(e =>
+        {
+            e.HasKey(r => new { r.NetworkId, r.RecDate, r.ToDeviceId, r.FromDeviceId });
+            e.Property(r => r.NetworkId).IsRequired();
+            e.Property(r => r.RecDate).IsRequired();
+            e.Property(r => r.ToDeviceId).IsRequired();
+            e.Property(r => r.FromDeviceId).IsRequired();
+            e.Property(r => r.Count).IsRequired().HasDefaultValue(0);
+            e.Property(r => r.DirectCount).IsRequired().HasDefaultValue(0);
+            e.Property(r => r.AvgDirectSnr);
+            e.Property(r => r.AvgHops).IsRequired().HasDefaultValue(0);
+        });
+
         modelBuilder.Entity<City>(e =>
         {
             e.HasKey(r => r.Id);
@@ -77,7 +109,7 @@ public class AnalyticsDbContext(DbContextOptions<AnalyticsDbContext> options) : 
             e.HasIndex(r => new { r.VoteId, r.Prefix }).IsUnique();
         });
 
-       
+
         modelBuilder.Entity<VoteLog>(e =>
         {
             e.HasKey(r => r.Id);

@@ -759,7 +759,8 @@ namespace TBot
             int? hardwareModel,
             long? macAddress,
             byte[] publicKey,
-            long meshPacketId)
+            long meshPacketId,
+            DeviceRole? role)
         {
             if (publicKey == null || publicKey.Length == 0 || publicKey.Length != MeshtasticService.PkiKeyLength)
             {
@@ -779,6 +780,7 @@ namespace TBot
                     PublicKey = publicKey,
                     HardwareModel = hardwareModel,
                     MacAddress = macAddress,
+                    Role = role,
                     CreatedUtc = now,
                     UpdatedUtc = now,
                     LastUpdatePacketId = meshPacketId
@@ -802,6 +804,7 @@ namespace TBot
                 entity.HardwareModel = hardwareModel;
                 entity.MacAddress = macAddress;
                 entity.UpdatedUtc = now;
+                entity.Role = role;
                 entity.LastUpdatePacketId = meshPacketId;
                 res = SaveResult.Updated;
             }
@@ -811,6 +814,7 @@ namespace TBot
             {
                 entity.NetworkId = networkId;
                 entity.NodeName = nodeName;
+                entity.Role = role;
                 entity.HardwareModel = hardwareModel;
                 entity.MacAddress = macAddress;
                 entity.UpdatedUtc = now;

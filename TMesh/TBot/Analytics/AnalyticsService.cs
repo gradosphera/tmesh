@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Meshtastic.Protobufs;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using NodaTime;
@@ -10,10 +11,11 @@ using System.Threading.Tasks;
 using TBot.Analytics.Dto;
 using TBot.Analytics.Models;
 using TBot.Helpers;
+using TBot.Models.MeshMessages;
 
 namespace TBot.Analytics
 {
-    public class AnalyticsService(AnalyticsDbContext db, TimeZoneHelper tz, IMemoryCache cache)
+    public class AnalyticsService(AnalyticsDbContext db, RegistrationService registrationService, TimeZoneHelper tz, IMemoryCache cache)
     {
         public async Task RecordEventAsync(DeviceMetric metrics)
         {
@@ -44,7 +46,7 @@ namespace TBot.Analytics
                 .ToListAsync();
         }
 
-        public async Task SaveNodeInfo(Packet packet, NodeInfo nodeInfo, PacketBody body)
+        public async Task SaveNodeInfo(Packet packet, Models.NodeInfo nodeInfo, PacketBody body)
         {
             packet.Timestamp = Instant.FromDateTimeUtc(DateTime.UtcNow);
             db.Packets.Add(packet);
@@ -57,6 +59,175 @@ namespace TBot.Analytics
             db.RawPackets.Add(body);
 
             await db.SaveChangesAsync();
+        }
+
+        public async Task SaveTraceRoute(TraceRouteMessage msg)
+        {
+            var now = DateTime.UtcNow;
+            var localDate = LocalDate.FromDateTime(tz.ConvertFromUtcToDefaultTimezone(now));
+            var route = ConvertTraceRouteToPairs(msg);
+            var newPairs = new List<TraceRoutePair>();
+            newPairs.AddRange(GetPairsFromRoute(msg.NetworkId, msg.IsTowards ? msg.Id : msg.RequestId, route.Route, localDate));
+            newPairs.AddRange(GetPairsFromRoute(msg.NetworkId, msg.Id, route.RouteBack, localDate));
+            db.TraceRoutePairs.AddRange(newPairs);
+            var deviceIds = newPairs.Select(p => p.ToDeviceId).Distinct();
+            foreach (var deviceId in deviceIds)
+            {
+                await MaybeSaveTraceDevice(deviceId, msg.NetworkId, localDate);
+            }
+            await db.SaveChangesAsync();
+        }
+
+        private async ValueTask MaybeSaveTraceDevice(long id, int networkId, LocalDate localToday)
+        {
+            if (cache.TryGetValue($"TraceDevice_{id}_{localToday:yyyyMMdd}", out _))
+            {
+                return;
+            }
+            cache.Set($"TraceDevice_{id}_{localToday:yyyyMMdd}", true, TimeSpan.FromHours(2));
+
+            var device = await registrationService.GetDeviceAsync(id);
+            if (device == null)
+                return;
+
+            double? latitude = null;
+            double? longitude = null;
+            if (device.IsLocationPublic)
+            {
+                latitude = device.Latitude;
+                longitude = device.Longitude;
+            }
+
+            var updated = await db.TracePairDevices
+                .Where(x => x.RecDate == localToday && x.Id == id && x.NetworkId == networkId)
+                .ExecuteUpdateAsync(x => x
+                    .SetProperty(d => d.Name, device.NodeName)
+                    .SetProperty(d => d.Latitude, latitude)
+                    .SetProperty(d => d.Longitude, longitude)
+                    .SetProperty(d => d.Role, device.Role));
+
+            if (updated == 0)
+            {
+                db.TracePairDevices.Add(new TracePairDevice
+                {
+                    Id = id,
+                    NetworkId = networkId,
+                    RecDate = localToday,
+                    Name = device.NodeName,
+                    Latitude = latitude,
+                    Longitude = longitude,
+                    Role = device.Role
+                });
+            }
+        }
+
+        private IEnumerable<TraceRoutePair> GetPairsFromRoute(int networkId, long packetId, List<TraceRoutePairInfo> route, LocalDate localDate)
+        {
+            for (int i = 0; i < route.Count; i++)
+            {
+                var pair = route[i];
+
+                if (cache.TryGetValue($"TraceRoutePair_{packetId}_{pair.ToDeviceId}", out _))
+                {
+                    continue;
+                }
+                cache.Set($"TraceRoutePair_{packetId}_{pair.ToDeviceId}", true, TimeSpan.FromMinutes(MeshtasticService.LinkTraceExpirationMinutes));
+
+                yield return new TraceRoutePair
+                {
+                    NetworkId = networkId,
+                    ToDeviceId = (uint)pair.ToDeviceId,
+                    FromDeviceId = (uint)pair.FromDeviceId,
+                    Hops = 0,
+                    DirectSnr = pair.Snr,
+                    RecDate = localDate
+                };
+
+                for (int j = i - 1; j >= 0; j--)
+                {
+                    var previousPair = route[j];
+                    yield return new TraceRoutePair
+                    {
+                        NetworkId = networkId,
+                        ToDeviceId = (uint)pair.ToDeviceId,
+                        FromDeviceId = (uint)previousPair.FromDeviceId,
+                        Hops = (byte)(i - j),
+                        DirectSnr = null,
+                        RecDate = localDate
+                    };
+                }
+            }
+        }
+
+        private TraceRouteInfo ConvertTraceRouteToPairs(TraceRouteMessage msg)
+        {
+            var res = new TraceRouteInfo
+            {
+                Route = new List<TraceRoutePairInfo>(),
+                RouteBack = new List<TraceRoutePairInfo>()
+            };
+
+            long from = msg.IsTowards ? msg.DeviceId : msg.ToDeviceId;
+
+            if (msg.RouteDiscovery.Route != null)
+            {
+                for (int i = 0; i < msg.RouteDiscovery.Route.Count; i++)
+                {
+                    var to = msg.RouteDiscovery.Route[i];
+                    res.Route.Add(new TraceRoutePairInfo
+                    {
+                        FromDeviceId = from,
+                        ToDeviceId = to,
+                        Snr = msg.RouteDiscovery.SnrTowards != null && msg.RouteDiscovery.SnrTowards.Count > i ? MeshtasticService.UnroundSnrFromTrace(msg.RouteDiscovery.SnrTowards[i]) : null
+                    });
+                    from = to;
+                }
+            }
+
+            if (!msg.IsTowards)
+            {
+                res.Route.Add(new TraceRoutePairInfo
+                {
+                    FromDeviceId = from,
+                    ToDeviceId = msg.DeviceId,
+                    Snr = msg.RouteDiscovery.Route != null 
+                        && msg.RouteDiscovery.SnrTowards != null
+                        && msg.RouteDiscovery.Route.Count == msg.RouteDiscovery.SnrTowards.Count - 1 ? MeshtasticService.UnroundSnrFromTrace(msg.RouteDiscovery.SnrTowards.Last()) : null
+                });
+
+                from = msg.ToDeviceId;
+            
+
+                if (msg.RouteDiscovery.RouteBack != null)
+                {
+                    for (int i = 0; i < msg.RouteDiscovery.RouteBack.Count; i++)
+                    {
+                        var to = msg.RouteDiscovery.RouteBack[i];
+                        res.RouteBack.Add(new TraceRoutePairInfo
+                        {
+                            FromDeviceId = from,
+                            ToDeviceId = to,
+                            Snr = msg.RouteDiscovery.SnrBack != null && msg.RouteDiscovery.SnrBack.Count > i ? MeshtasticService.UnroundSnrFromTrace(msg.RouteDiscovery.SnrBack[i]) : null
+                        });
+                        from = to;
+                    }
+
+                    if (msg.RouteDiscovery.SnrBack != null)
+                    {
+                        if (msg.RouteDiscovery.RouteBack.Count == msg.RouteDiscovery.SnrBack.Count - 1)
+                        {
+                            res.RouteBack.Add(new TraceRoutePairInfo
+                            {
+                                FromDeviceId = from,
+                                ToDeviceId = msg.ToDeviceId,
+                                Snr = MeshtasticService.UnroundSnrFromTrace(msg.RouteDiscovery.SnrBack.Last())
+                            });
+                        }
+                    }
+                }
+            }
+
+            return res;
         }
 
         public async Task RecordLinkTrace(
@@ -137,19 +308,24 @@ namespace TBot.Analytics
                 .ToListAsync();
         }
 
+        public async Task Aggregates15MinRefresh()
+        {
+            await db.Database.ExecuteSqlRawAsync("CALL aggregate_trace_route_pairs();");
+        }
+
         public async Task<List<LatestVoteStat>> GetActiveNetworkVotesLatestStats(int networkId)
         {
             return await (from v in db.Votes
-                         join s in db.VoteSnapshots on v.LastSnapshotId equals s.Id
-                         join st in db.VoteStats on s.Id equals st.SnapshotId
-                         where v.NetworkId == networkId && v.IsActive
+                          join s in db.VoteSnapshots on v.LastSnapshotId equals s.Id
+                          join st in db.VoteStats on s.Id equals st.SnapshotId
+                          where v.NetworkId == networkId && v.IsActive
                           select new LatestVoteStat
-                         {
+                          {
                               VoteId = v.Id,
                               LastUpdate = v.LastUpdate,
                               ActiveCount = st.ActiveCount,
                               OptionId = st.OptionId
-                         }).ToListAsync();
+                          }).ToListAsync();
         }
 
         public void AddRange<T>(IEnumerable<T> rows)

@@ -23,14 +23,14 @@ namespace TBot
         LocalMessageQueueService localMessageQueueService,
         IMemoryCache memoryCache,
         IOptions<TBotOptions> options,
-        ILogger<MeshtasticService> logger): IDisposable
+        ILogger<MeshtasticService> logger) : IDisposable
     {
         public const int MaxTextMessageBytes = 233 - MESHTASTIC_PKC_OVERHEAD;
         public const int MaxHops = 7;
         public const int WaitForAckStatusMaxMinutes = 2;
         const int MESHTASTIC_PKC_OVERHEAD = 12;
         private const int NoDupExpirationMinutes = 10;
-        private const int LinkTraceExpirationMinutes = 6;
+        public const int LinkTraceExpirationMinutes = 6;
         public const int PkiKeyLength = 32;
         private const int PskKeyLengthShort = 16;
         private const int PskKeyLength = 32;
@@ -40,7 +40,7 @@ namespace TBot
         private const int MaxChannelNameBytes = 11;
         private const int OkToMqttMask = 1;
         private const int NeedReplyMask = 1 << 1;
-        private const int TraceRouteSNRDefault = sbyte.MinValue;
+        public const int TraceRouteSNRDefault = sbyte.MinValue;
         internal const uint BroadcastDeviceId = uint.MaxValue;
         public const string PKIChannelName = "PKI";
         public const string UnknownChannelName = "UCH";
@@ -225,7 +225,7 @@ namespace TBot
                     {
                         //swallow
                     }
-                    catch (Exception ex) 
+                    catch (Exception ex)
                     {
                         logger.LogError(ex, "Error while delaying message {MessageId} to network {NetworkId}", envelope.Packet.Id, networkId);
                     }
@@ -904,9 +904,21 @@ namespace TBot
             memoryCache.Set(key, true, TimeSpan.FromMinutes(LinkTraceExpirationMinutes));
         }
 
+        public void MarkAsTraceRoute(long packetId)
+        {
+            var key = $"meshtastic:traceroute:{packetId:X}";
+            memoryCache.Set(key, true, TimeSpan.FromMinutes(LinkTraceExpirationMinutes));
+        }
+
         public bool IsPreviouslySeenNodeInfo(ServiceEnvelope env)
         {
             var key = $"meshtastic:nodeinfo:{env.Packet.Id:X}";
+            return memoryCache.TryGetValue(key, out _);
+        }
+
+        public bool IsPreviouslySeenTraceRoute(ServiceEnvelope env)
+        {
+            var key = $"meshtastic:traceroute:{env.Packet.Id:X}";
             return memoryCache.TryGetValue(key, out _);
         }
 
@@ -1246,20 +1258,23 @@ namespace TBot
                 }
                 return (true, ack);
             }
-            else if (decoded.Portnum == PortNum.TracerouteApp
-                && envelope.Packet.To == _options.MeshtasticNodeId)
+            else if (decoded.Portnum == PortNum.TracerouteApp)
             {
                 var res = ReadTraceRoute(envelope, decoded, recipient, networkId, isTMeshGateway);
-                if (res.success && res.msg is TraceRouteMessage trs)
+                if (res.success
+                    && res.msg is TraceRouteMessage trs)
                 {
-                    AddIntermidiateNodeToTraceRoute(trs, gatewayNodeId);
-                    if (trs.IsTowards)
+                    if (trs.ToDeviceId == _options.MeshtasticNodeId)
                     {
-                        trs.RouteDiscovery.SnrTowards.Add(TraceRouteSNRDefault);
-                    }
-                    else
-                    {
-                        trs.RouteDiscovery.SnrBack.Add(TraceRouteSNRDefault);
+                        AddIntermidiateNodeToTraceRoute(trs, gatewayNodeId);
+                        if (trs.IsTowards)
+                        {
+                            trs.RouteDiscovery.SnrTowards.Add(TraceRouteSNRDefault);
+                        }
+                        else
+                        {
+                            trs.RouteDiscovery.SnrBack.Add(TraceRouteSNRDefault);
+                        }
                     }
                 }
                 return res;
@@ -1403,9 +1418,10 @@ namespace TBot
                 snr.Add(TraceRouteSNRDefault);
             }
 
+            //Older firmware does not add themself as part of the route before sending the trace route message to MQTT
             if (!route.Contains((uint)nodeId)
-                        && trs.DeviceId != nodeId
-                        && trs.ToDeviceId != nodeId)
+                && trs.DeviceId != nodeId
+                && trs.ToDeviceId != nodeId)
             {
                 route.Add((uint)nodeId);
                 snr.Add(trs.RxSnrRounded);
@@ -1604,6 +1620,15 @@ namespace TBot
             };
 
             return (true, msg);
+        }
+
+        public static DeviceRole? ConvertDeviceRole(byte roleFromNodeInfo)
+        {
+            if (Enum.IsDefined(typeof(DeviceRole), roleFromNodeInfo))
+            {
+                return (DeviceRole)roleFromNodeInfo;
+            }
+            return null;
         }
 
         private static long MacBytesToUInt64(IEnumerable<byte> bytes)

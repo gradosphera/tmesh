@@ -21,6 +21,8 @@ public class Device : IRecipient
     public bool HasRegistrations { get; set; }
     public double? Latitude { get; set; }
     public double? Longitude { get; set; }
+
+    public DeviceRole? Role { get; set; }
     public bool IsLocationPublic { get; set; }
     public DateTime? LocationUpdatedUtc { get; set; }
     public int? AccuracyMeters { get; set; }

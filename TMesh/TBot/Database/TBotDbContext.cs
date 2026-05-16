@@ -49,7 +49,7 @@ public class TBotDbContext(DbContextOptions<TBotDbContext> options) : DbContext(
             e.Property(r => r.NetworkId).IsRequired()
                .HasDefaultValue(1);
 
-            e.Property(p => p.NodeName);
+            e.Property(p => p.NodeName).HasMaxLength(200);
             e.Property(p => p.HardwareModel);
             e.Property(p => p.MacAddress);
             e.Property(p => p.CreatedUtc)
