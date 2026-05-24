@@ -318,6 +318,7 @@ public class MessageLoopService(
         var min15ago = now.AddMinutes(-15);
         var hour1ago = now.AddHours(-1);
         var hours24ago = now.AddHours(-24);
+        var hours48ago = now.AddHours(-48);
 
         var registrationService = scope.ServiceProvider.GetRequiredService<RegistrationService>();
 
@@ -329,6 +330,8 @@ public class MessageLoopService(
 
         foreach (var network in networks)
         {
+            var primaryChannel = await registrationService.GetNetworkPrimaryChannelCached(network.Id);
+
             var networkStats = new NetworkStats
             {
                 Id = network.Id,
@@ -340,6 +343,7 @@ public class MessageLoopService(
                 ChannelChatRegistrations = await registrationService.GetChannelRegistrationsCountByNetwork(network.Id),
                 Devices = await registrationService.GetDevicesCountByNetwork(network.Id),
                 Devices24h = await registrationService.GetActiveDevicesCountByNetwork(network.Id, hours24ago),
+                Devices48h_OnPrimary = await registrationService.GetActiveDevicesOnPublicChannelCountByNetwork(network.Id, hours48ago, primaryChannel?.Id ?? -1),
                 GatewaysLastSeen = await GetGatewaysLastSeenStatByNetwork(now, registrationService, network.Id)
             };
 

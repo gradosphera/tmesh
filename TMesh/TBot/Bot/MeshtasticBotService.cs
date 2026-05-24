@@ -838,6 +838,7 @@ namespace TBot.Bot
                 message.NodeInfo.MacAddr,
                 message.PublicKey,
                 message.Id,
+                message.DecodedBy.RecipientPublicChannelId,
                 MeshtasticService.ConvertDeviceRole(message.NodeInfo.Role));
 
             if (message.NeedAck && res.device != null && res.device.PublicKey != null)

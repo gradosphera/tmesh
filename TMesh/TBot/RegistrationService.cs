@@ -760,6 +760,7 @@ namespace TBot
             long? macAddress,
             byte[] publicKey,
             long meshPacketId,
+            int? nodeInfoFromPublicChannelId,
             DeviceRole? role)
         {
             if (publicKey == null || publicKey.Length == 0 || publicKey.Length != MeshtasticService.PkiKeyLength)
@@ -783,6 +784,7 @@ namespace TBot
                     Role = role,
                     CreatedUtc = now,
                     UpdatedUtc = now,
+                    NodeInfoOnPublicChannelId = nodeInfoFromPublicChannelId,
                     LastUpdatePacketId = meshPacketId
                 };
                 db.Devices.Add(entity);
@@ -803,6 +805,7 @@ namespace TBot
                 entity.NodeName = nodeName;
                 entity.HardwareModel = hardwareModel;
                 entity.MacAddress = macAddress;
+                entity.NodeInfoOnPublicChannelId = entity.NodeInfoOnPublicChannelId ?? nodeInfoFromPublicChannelId;
                 entity.UpdatedUtc = now;
                 entity.Role = role;
                 entity.LastUpdatePacketId = meshPacketId;
@@ -815,6 +818,7 @@ namespace TBot
                 entity.NetworkId = networkId;
                 entity.NodeName = nodeName;
                 entity.Role = role;
+                entity.NodeInfoOnPublicChannelId = entity.NodeInfoOnPublicChannelId ?? nodeInfoFromPublicChannelId;
                 entity.HardwareModel = hardwareModel;
                 entity.MacAddress = macAddress;
                 entity.UpdatedUtc = now;
@@ -1109,6 +1113,15 @@ namespace TBot
             return await db.Devices.CountAsync(d => d.NetworkId == networkId && d.UpdatedUtc >= fromUtc);
         }
 
+
+        public async Task<int> GetActiveDevicesOnPublicChannelCountByNetwork(
+            int networkId,
+            DateTime fromUtc,
+            int publicChannelId)
+        {
+            return await db.Devices.CountAsync(d => d.NetworkId == networkId 
+                && d.UpdatedUtc >= fromUtc && d.NodeInfoOnPublicChannelId == publicChannelId);
+        }
 
         public async Task<(int totalCount, string[] sampleNames)> GetDeviceCountForMassDirectMessage(
             int networkId, 

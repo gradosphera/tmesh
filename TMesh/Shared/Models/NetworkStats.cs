@@ -17,6 +17,8 @@ namespace Shared.Models
         public int Devices24h { get; set; }
         public int Devices { get; set; }
 
+        public int Devices48h_OnPrimary { get; set; }
+
         public List<ActiveVoteStats> ActiveVotes { get; set; }
 
         public int TelemetrySaved24H { get; set; }

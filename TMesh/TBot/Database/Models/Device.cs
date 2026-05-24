@@ -14,6 +14,7 @@ public class Device : IRecipient
     public int? HardwareModel { get; set; }
 
     public long? MacAddress { get; set; }
+    public int? NodeInfoOnPublicChannelId { get; set; }
 
     public long? LastUpdatePacketId { get; set; }
     public System.DateTime CreatedUtc { get; set; }
@@ -26,7 +27,6 @@ public class Device : IRecipient
     public bool IsLocationPublic { get; set; }
     public DateTime? LocationUpdatedUtc { get; set; }
     public int? AccuracyMeters { get; set; }
-
     long? IRecipient.RecipientDeviceId => DeviceId;
 
     byte[] IRecipient.RecipientKey => PublicKey;
