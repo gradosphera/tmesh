@@ -1113,14 +1113,23 @@ namespace TBot
             return await db.Devices.CountAsync(d => d.NetworkId == networkId && d.UpdatedUtc >= fromUtc);
         }
 
-
         public async Task<int> GetActiveDevicesOnPublicChannelCountByNetwork(
+           int networkId,
+           DateTime fromUtc,
+           int publicChannelId)
+        {
+            return await db.Devices.CountAsync(d => d.NetworkId == networkId
+                && d.UpdatedUtc >= fromUtc && d.NodeInfoOnPublicChannelId == publicChannelId);
+        }
+
+
+        public async Task<int> GetActiveDevicesNotOnPublicChannelCountByNetwork(
             int networkId,
             DateTime fromUtc,
             int publicChannelId)
         {
             return await db.Devices.CountAsync(d => d.NetworkId == networkId 
-                && d.UpdatedUtc >= fromUtc && d.NodeInfoOnPublicChannelId == publicChannelId);
+                && d.UpdatedUtc >= fromUtc && d.NodeInfoOnPublicChannelId != null && d.NodeInfoOnPublicChannelId != publicChannelId);
         }
 
         public async Task<(int totalCount, string[] sampleNames)> GetDeviceCountForMassDirectMessage(
