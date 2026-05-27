@@ -219,6 +219,7 @@ namespace TBot.Bot
 
         }
 
+        private static readonly string[] colorSymbols = ["⚪", "⚫", "🔴", "🟠", "🟡", "🟢", "🔵", "🟣"];
 
 
         private async ValueTask ProcessPublicTextForChatSession(TextMessage meshMsg)
@@ -244,18 +245,8 @@ namespace TBot.Bot
             var device = await registrationService.GetDeviceAsync(meshMsg.DeviceId);
             var deviceName = device != null ? device.NodeName : MeshtasticService.GetMeshtasticNodeHexId(meshMsg.DeviceId);
 
-            var colorSymbols = new[]
- {
-    "⚪",
-    "⚫",
-    "🔴",
-    "🟠",
-    "🟡",
-    "🟢",
-    "🔵",
-    "🟣"
-};
-            var colorSymbol = colorSymbols[(int)(meshMsg.DeviceId % colorSymbols.Length)];
+           
+            var colorSymbol = colorSymbols[HashHelper.ColorIndexFromDeviceId((uint)meshMsg.DeviceId, colorSymbols.Length)];
 
             if (meshMsg.ReplyTo != 0)
             {

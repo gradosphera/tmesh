@@ -274,7 +274,7 @@ namespace TBot
                                 topicFilters.Add(new MqttTopicFilter
                                 {
                                     Topic = topic,
-                                    QualityOfServiceLevel = MQTTnet.Protocol.MqttQualityOfServiceLevel.AtLeastOnce
+                                    QualityOfServiceLevel = MQTTnet.Protocol.MqttQualityOfServiceLevel.AtMostOnce
                                 });
                             }
                         }

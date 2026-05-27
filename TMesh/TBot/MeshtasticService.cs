@@ -1107,8 +1107,8 @@ namespace TBot
         internal static bool OkToMqtt(Data decoded)
         {
             return decoded == null
-                || !decoded.HasBitfield
-                || (decoded.Bitfield & OkToMqttMask) != 0;
+                || (decoded.HasBitfield
+                && (decoded.Bitfield & OkToMqttMask) != 0);
         }
 
         public (bool success, MeshMessage msg) TryDecryptMessage(
