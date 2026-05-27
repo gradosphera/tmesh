@@ -255,7 +255,7 @@ namespace TBot.Bot
                 {
                     var msg = await TrySendMessage(
                         chatId: replyToStatus.TelegramChatId,
-                        text: $"{colorSymbol} {deviceName} [#{channel.Name}]: {text}",
+                        text: $"{colorSymbol} {deviceName}: {text}",
                         replyParameters: new ReplyParameters
                         {
                             AllowSendingWithoutReply = true,
@@ -296,7 +296,7 @@ namespace TBot.Bot
             {
                 var tgMsg = await TrySendMessage(
                     chatId: activeChatId.Value,
-                    text: $"{colorSymbol} {deviceName} [#{channel.Name}]: {text}");
+                    text: $"{colorSymbol} {deviceName}: {text}");
 
                 if (tgMsg == null) return;
 
