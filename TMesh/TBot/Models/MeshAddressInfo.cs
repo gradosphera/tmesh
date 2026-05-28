@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Meshtastic.Protobufs;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -14,5 +15,9 @@ namespace TBot.Models
         public bool IsPkiEncrypted { get; set; }
 
         public byte XorHash { get; set; }
+
+        public string MqttChannelName { get; set; }
+
+        public MeshPacket.PayloadVariantOneofCase PayloadType { get; set; }
     }
 }

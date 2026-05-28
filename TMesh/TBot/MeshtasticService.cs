@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Security;
+using Serilog;
 using Shared.Models;
 using System.Text;
 using TBot.Analytics.Models;
@@ -1049,8 +1050,33 @@ namespace TBot
             return h;
         }
 
-        public static (Data, IRecipient) DecryptPacketWithPsk(MeshPacket packet, IEnumerable<IRecipient> recipients)
+        public static (Data, IRecipient) DecryptPacketWithPsk(ServiceEnvelope envelope, IEnumerable<IRecipient> recipients)
         {
+            var packet = envelope.Packet;
+
+            if (packet.PayloadVariantCase == MeshPacket.PayloadVariantOneofCase.None
+                || recipients == null
+                || !recipients.Any())
+            {
+                return default;
+            }
+
+            if (packet.PayloadVariantCase == MeshPacket.PayloadVariantOneofCase.Decoded)
+            {
+                if (packet.Decoded == null || packet.Decoded.Portnum == PortNum.UnknownApp)
+                {
+                    return default;
+                }
+
+                return (packet.Decoded, recipients.First());
+            }
+
+            if (packet.Encrypted == null || packet.Encrypted.Length == 0)
+            {
+                return default;
+            }
+
+
             var input = packet.Encrypted.ToByteArray();
             var nonce = new NonceGenerator(packet.From, packet.Id);
 
@@ -1099,7 +1125,9 @@ namespace TBot
                 From = envelope.Packet.From,
                 To = envelope.Packet.To,
                 IsPkiEncrypted = envelope.Packet.PkiEncrypted,
-                XorHash = (byte)envelope.Packet.Channel
+                XorHash = (byte)envelope.Packet.Channel,
+                MqttChannelName = envelope.ChannelId,
+                PayloadType = envelope.Packet.PayloadVariantCase
             };
         }
 
@@ -1126,11 +1154,6 @@ namespace TBot
             }
 
             if (gatewayNodeId == _options.MeshtasticNodeId)
-            {
-                return default;
-            }
-
-            if (envelope.Packet.PayloadVariantCase != MeshPacket.PayloadVariantOneofCase.Encrypted)
             {
                 return default;
             }
@@ -1223,7 +1246,7 @@ namespace TBot
                 return default;
             }
 
-            var (decoded, _) = DecryptPacketWithPsk(envelope.Packet, [recipient]);
+            var (decoded, _) = DecryptPacketWithPsk(envelope, [recipient]);
             if (decoded == null || decoded.Portnum != PortNum.TracerouteApp)
             {
                 return default;
@@ -1244,7 +1267,7 @@ namespace TBot
                 return default;
             }
 
-            var (decoded, recipient) = DecryptPacketWithPsk(envelope.Packet, recipients);
+            var (decoded, recipient) = DecryptPacketWithPsk(envelope, recipients);
             if (decoded == null)
             {
                 return default;

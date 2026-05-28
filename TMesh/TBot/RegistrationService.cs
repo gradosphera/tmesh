@@ -281,11 +281,7 @@ namespace TBot
             return res;
         }
 
-        public void InvalidatePrimaryChannelsCache()
-        {
-            memoryCache.Remove($"PrimaryPublicChannels");
-            memoryCache.Remove($"NodeInfoPublicChannels");
-        }
+      
 
         /// <summary>
         /// Returns channels on which virtual node info should be sent:
@@ -1318,6 +1314,7 @@ namespace TBot
         public void InvalidatePublicChannelsCache(int networkId, int? id)
         {
             memoryCache.Remove($"GetPublicChannelKeysLookupByHash#{networkId}");
+            memoryCache.Remove($"PublicChannelsByNetwork#{networkId}");
             memoryCache.Remove("PrimaryPublicChannels");
             memoryCache.Remove("NodeInfoPublicChannels");
             if (id.HasValue)
@@ -1402,13 +1399,19 @@ namespace TBot
 
         public async Task<List<PublicChannel>> GetPublicChannelsByNetworkAsync(int networkId)
         {
-            return await db.PublicChannels
-                .Where(c => c.NetworkId == networkId)
-                .OrderBy(c => c.IsPrimary ? 0 : 1)
-                .ThenBy(c => c.Name)
-                .AsNoTracking()
-                .ToListAsync();
+            return await memoryCache.GetOrCreateAsync($"PublicChannelsByNetwork#{networkId}", async entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(6);
+                return await db.PublicChannels
+                    .Where(c => c.NetworkId == networkId)
+                    .OrderBy(c => c.IsPrimary ? 0 : 1)
+                    .ThenBy(c => c.Name)
+                    .AsNoTracking()
+                    .ToListAsync();
+            });
         }
+
+        
 
         public async Task<List<PublicChannel>> GetAllPublicChannelsAsync()
         {

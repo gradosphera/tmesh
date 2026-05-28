@@ -618,12 +618,26 @@ public class MessageLoopService(
             {
                 scope ??= services.CreateScope();
                 registrationService ??= scope.ServiceProvider.GetRequiredService<RegistrationService>();
-                recipients.AddRange(
-                    await registrationService.GetPublicChannelKeysByHashCached(
-                        networkId, packetFromTo.XorHash));
-                var channelRecipients =
-                    await registrationService.GetChannelKeysByHashCached(networkId, packetFromTo.XorHash);
-                recipients.AddRange(channelRecipients);
+
+                if (packetFromTo.PayloadType == MeshPacket.PayloadVariantOneofCase.Encrypted)
+                {
+                    recipients.AddRange(
+                        await registrationService.GetPublicChannelKeysByHashCached(
+                            networkId, packetFromTo.XorHash));
+                    var channelRecipients =
+                        await registrationService.GetChannelKeysByHashCached(networkId, packetFromTo.XorHash);
+                    recipients.AddRange(channelRecipients);
+                }
+                else if (packetFromTo.PayloadType == MeshPacket.PayloadVariantOneofCase.Decoded)
+                {
+                    var channelRecipients = await registrationService.GetPublicChannelsByNetworkAsync(networkId);
+                    
+                    var channel = channelRecipients.FirstOrDefault(c => c.Name == packetFromTo.MqttChannelName);
+                    if (channel != null)
+                    {
+                        recipients.Add(channel);
+                    }
+                }
             }
 
             var (success, msg) = meshtasticService.TryDecryptMessage(env, recipients, networkId, isTMeshGateway);
