@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using TBot.Database.Models;
+using TBot.Models.Uplink;
 
 namespace TBot.Models.MeshMessages
 {
@@ -30,7 +31,7 @@ namespace TBot.Models.MeshMessages
 
         public bool NeedAck { get; set; }
 
-        public bool OkToMqtt { get; set; }
+        public OkToMqttStatus OkToMqtt { get; set; }
         public bool ViaMqtt { get; set; }
 
         public long GatewayId { get; set; }

@@ -50,9 +50,10 @@ namespace TBot
                 {
                     serverId.Append('d');
                 }
-                if (x.server.UplinkEnabled)
+                if (x.server.UplinkMode != UplinkMode.Disabled)
                 {
                     serverId.Append('u');
+                    serverId.Append((int)x.server.UplinkMode);
                 }
                 serverId.Append('-');
                 serverId.Append(x.server.Address);
@@ -76,7 +77,7 @@ namespace TBot
 
             await FillNetworks(scope);
 
-            foreach (var server in _options.MapMqttServers.Where(x => x.AnalyticsDownlinkEnabled || x.UplinkEnabled))
+            foreach (var server in _options.MapMqttServers.Where(x => x.AnalyticsDownlinkEnabled || x.UplinkMode != UplinkMode.Disabled))
             {
                 await ConnectServerAsync(server, ct);
             }
@@ -104,25 +105,58 @@ namespace TBot
                 .ToLookup(x => x.Value.ShortName, x => x.Key);
         }
 
-        public bool UplinkEnabled => _clients?.Any(x => x.server.UplinkEnabled) == true;
+        public bool UplinkEnabled => _clients?.Any(x => x.server.UplinkMode != UplinkMode.Disabled) == true;
 
-        public async ValueTask PublishMeshtasticMessage(
+
+        public bool ShouldUplink(OkToMqttStatus okToMqttStatus)
+        {
+            foreach (var (_, server) in _clients.Where(x => x.server.UplinkMode != UplinkMode.Disabled))
+            {
+                if (ShouldUplink(okToMqttStatus, server.UplinkMode))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public async ValueTask<bool> PublishMeshtasticMessage(
           int networkId,
+          OkToMqttStatus okToMqttStatus,
           ServiceEnvelope envelope)
         {
-            foreach (var (client, server) in _clients.Where(x => x.server.UplinkEnabled && x.mqttClient.IsConnected))
+            bool published = false;
+            foreach (var (client, server) in _clients.Where(x => x.server.UplinkMode != UplinkMode.Disabled && x.mqttClient.IsConnected))
             {
-                await PublishToClientAsync(client, server, networkId, envelope);
+                var shouldUplink = ShouldUplink(okToMqttStatus, server.UplinkMode);
+                if (shouldUplink)
+                {
+                    await PublishToClientAsync(client, server, networkId, envelope);
+                    published = true;
+                }
             }
+            return published;
         }
+
+        private static bool ShouldUplink(OkToMqttStatus okToMqttStatus, UplinkMode uplinkMode)
+            => uplinkMode switch
+            {
+                UplinkMode.Disabled => false,
+                UplinkMode.MqttOkExplicitTrueOnly => okToMqttStatus == OkToMqttStatus.True,
+                UplinkMode.MqttOkTrueAndUnknown => okToMqttStatus == OkToMqttStatus.True || okToMqttStatus == OkToMqttStatus.Unknown,
+                UplinkMode.All => true,
+                UplinkMode.MqttNotOkOnly => okToMqttStatus == OkToMqttStatus.False_NotPosition
+                    || okToMqttStatus == OkToMqttStatus.False_IsPosition,
+                UplinkMode.MqttNotOkOnlyExceptPosition => okToMqttStatus == OkToMqttStatus.False_NotPosition,
+                _ => throw new NotImplementedException($"UplinkMode {uplinkMode} not implemented")
+            };
 
         private async Task PublishToClientAsync(IMqttClient client, MapMqttServerOptions server, int networkId, ServiceEnvelope envelope)
         {
-            if (!server.UplinkEnabled)
+            if (server.UplinkMode == UplinkMode.Disabled)
             {
                 throw new InvalidOperationException($"Server {server.Address} does not have uplink enabled.");
             }
-
             try
             {
                 string topic = null;
@@ -235,7 +269,7 @@ namespace TBot
                     sslOptions.CertificateValidationHandler = _ => true;
                 }
 
-                var clientId = $"{ClientId}_{(server.UplinkEnabled ? "u" : "")}{(server.AnalyticsDownlinkEnabled ? "d" : "")}";
+                var clientId = $"{ClientId}_{(server.UplinkMode != UplinkMode.Disabled ? $"u{(int)server.UplinkMode}" : "")}{(server.AnalyticsDownlinkEnabled ? "d" : "")}";
 
                 var builder = new MqttClientOptionsBuilder()
                     .WithTcpServer(server.Address, server.Port)

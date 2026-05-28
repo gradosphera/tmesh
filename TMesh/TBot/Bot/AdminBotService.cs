@@ -1287,9 +1287,16 @@ namespace TBot.Bot
             envelope.Packet.RelayNode = 35;
             envelope.Packet.RxTime = (uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-            await mapMqttService.PublishMeshtasticMessage(publicChannel.NetworkId, envelope);
+            bool sent = await mapMqttService.PublishMeshtasticMessage(publicChannel.NetworkId, MeshtasticService.DefaultOkToMqtt, envelope);
 
-            await botClient.SendMessage(chatId, $"Announcement sent to channel '{publicChannel.Name}' in network [{publicChannel.NetworkId}] \"{publicChannel.Name}\".\n\nMessage ID:\n{newMsgId}, ChannelXor: {envelope.Packet.Channel}");
+            if (sent)
+            {
+                await botClient.SendMessage(chatId, $"Announcement for channel '{publicChannel.Name}' in network [{publicChannel.NetworkId}] is sent to MQTT uplink.\n\nMessage ID:\n{newMsgId}, ChannelXor: {envelope.Packet.Channel}");
+            }
+            else
+            {
+                await botClient.SendMessage(chatId, $"Failed to send announcement to MQTT uplink for channel '{publicChannel.Name}' in network [{publicChannel.NetworkId}]. Please try again later.");
+            }
             return TgResult.Ok;
         }
 

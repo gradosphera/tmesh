@@ -73,6 +73,16 @@ public class TBotOptions
 
 }
 
+public enum UplinkMode
+{
+    Disabled,
+    MqttOkExplicitTrueOnly,
+    MqttOkTrueAndUnknown,
+    All,
+    MqttNotOkOnly,
+    MqttNotOkOnlyExceptPosition
+}
+
 public class MapMqttServerOptions
 {
     public string Address { get; set; }
@@ -83,7 +93,7 @@ public class MapMqttServerOptions
     public bool AllowUntrustedCertificates { get; set; }
     public string EncryptedTopicPrefix { get; set; }
     public string MapTopic { get; set; }
-    public bool UplinkEnabled { get; set; }
+    public UplinkMode UplinkMode { get; set; }
     public bool AnalyticsDownlinkEnabled { get; set; }
     public int? DefaultNetworkId { get; set; }
 

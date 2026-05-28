@@ -16,6 +16,7 @@ using TBot.Database.Models;
 using TBot.Models;
 using TBot.Models.MeshMessages;
 using TBot.Models.Queue;
+using TBot.Models.Uplink;
 using TBot.Services;
 using TBot.Services.Voting;
 
@@ -289,7 +290,7 @@ public class MessageLoopService(
         if (mapMqttService.UplinkEnabled
             && !arg.Data.Message.Packet.ViaMqtt)
         {
-            await UplinkToMap(arg.Data.NetworkId, arg.Data.Message);
+            await UplinkToMap(arg.Data.NetworkId, MeshtasticService.DefaultOkToMqtt, arg.Data.Message);
         }
     }
 
@@ -543,10 +544,13 @@ public class MessageLoopService(
             UpdateGatewayLastSeen(gatewayId);
 
             if (mapMqttService.UplinkEnabled
-                && !env.Packet.ViaMqtt
-                && meshtasticService.IsUplinkPacket(env))
+                && !env.Packet.ViaMqtt)
             {
-                await UplinkToMap(networkId, env);
+                var uplinkStatus = meshtasticService.GetUplinkPacketStatus(env);
+                if (uplinkStatus.HasValue)
+                {
+                    await UplinkToMap(networkId, uplinkStatus.Value, env);
+                }
             }
 
             await ProcessPacket(env, networkId, gatewayId, isTMeshGateway: true);
@@ -631,7 +635,7 @@ public class MessageLoopService(
                 else if (packetFromTo.PayloadType == MeshPacket.PayloadVariantOneofCase.Decoded)
                 {
                     var channelRecipients = await registrationService.GetPublicChannelsByNetworkAsync(networkId);
-                    
+
                     var channel = channelRecipients.FirstOrDefault(c => c.Name == packetFromTo.MqttChannelName);
                     if (channel != null)
                     {
@@ -652,7 +656,7 @@ public class MessageLoopService(
             {
                 if (isTMeshGateway && !env.Packet.ViaMqtt)
                 {
-                    await UplinkToMap(networkId, env);
+                    await UplinkToMap(networkId, msg?.OkToMqtt ?? OkToMqttStatus.Unknown, env);
                 }
                 return;
             }
@@ -810,30 +814,30 @@ public class MessageLoopService(
             return;
         }
 
-        if (!msg.OkToMqtt)
-        {
-            return;
-        }
-
         if (msg.ViaMqtt)
         {
             //No uplink for messages that were already received via MQTT, to avoid loops and duplicates in the map service
             return;
         }
 
-        await UplinkToMap(msg.NetworkId, data);
+        await UplinkToMap(msg.NetworkId, msg.OkToMqtt, data);
     }
 
-    private async ValueTask UplinkToMap(int networkId, ServiceEnvelope data)
+    private async ValueTask UplinkToMap(int networkId, OkToMqttStatus okToMqttStatus, ServiceEnvelope data)
     {
-        meshtasticService.MarkUplinkPacket(data.Packet.Id);
-
         if (data.Packet.ViaMqtt)
         {
             throw new Exception("Trying to uplink a packet that was received via MQTT, this should not happen");
         }
 
-        await mapMqttService.PublishMeshtasticMessage(networkId, data);
+        bool willUplink = mapMqttService.ShouldUplink(okToMqttStatus);
+        if (!willUplink)
+        {
+            return;
+        }
+
+        meshtasticService.MarkUplinkPacket(data.Packet.Id, okToMqttStatus);
+        await mapMqttService.PublishMeshtasticMessage(networkId, okToMqttStatus, data);
     }
 
     private async ValueTask PerhapsSaveForAnalytics(

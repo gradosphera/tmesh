@@ -17,6 +17,7 @@ using TBot.Helpers;
 using TBot.Models;
 using TBot.Models.MeshMessages;
 using TBot.Models.Queue;
+using TBot.Models.Uplink;
 
 namespace TBot
 {
@@ -549,6 +550,7 @@ namespace TBot
             return $"!{deviceId:x8}";
         }
 
+        public static OkToMqttStatus DefaultOkToMqtt => OkToMqttMask == 1 ? OkToMqttStatus.True : OkToMqttStatus.False_NotPosition;
 
 
         private MeshPacket CreateTextMessagePacket(
@@ -938,16 +940,16 @@ namespace TBot
             return memoryCache.TryGetValue(key, out _);
         }
 
-        public void MarkUplinkPacket(long packetId)
+        public void MarkUplinkPacket(long packetId, OkToMqttStatus status)
         {
             var key = $"meshtastic:uplinkpacket:{packetId:X}";
-            memoryCache.Set(key, true, TimeSpan.FromMinutes(NoDupExpirationMinutes));
+            memoryCache.Set(key, status, TimeSpan.FromMinutes(NoDupExpirationMinutes));
         }
 
-        public bool IsUplinkPacket(ServiceEnvelope env)
+        public OkToMqttStatus? GetUplinkPacketStatus(ServiceEnvelope env)
         {
             var key = $"meshtastic:uplinkpacket:{env.Packet.Id:X}";
-            return memoryCache.TryGetValue(key, out _);
+            return memoryCache.TryGetValue(key, out OkToMqttStatus status) ? status : null;
         }
 
         public bool TryStoreLinkTraceGatewayNoDup(long packetId, long gatewayId)
@@ -1131,11 +1133,28 @@ namespace TBot
             };
         }
 
-        internal static bool OkToMqtt(Data decoded)
+        internal static OkToMqttStatus OkToMqtt(Data decoded)
         {
-            return decoded == null
-                || (decoded.HasBitfield
-                && (decoded.Bitfield & OkToMqttMask) != 0);
+            if (decoded == null)
+            {
+                return OkToMqttStatus.Unknown;
+            }
+
+            bool ok = decoded.HasBitfield
+                && (decoded.Bitfield & OkToMqttMask) == OkToMqttMask;
+
+            if (ok)
+            {
+                return OkToMqttStatus.True;
+            }
+            else if (decoded.Portnum == PortNum.PositionApp)
+            {
+                return OkToMqttStatus.False_IsPosition;
+            }
+            else
+            {
+                return OkToMqttStatus.False_NotPosition;
+            }
         }
 
         public (bool success, MeshMessage msg) TryDecryptMessage(
