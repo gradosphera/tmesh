@@ -144,9 +144,18 @@ namespace TBot
                 UplinkMode.Disabled => false,
                 UplinkMode.MqttOkExplicitTrueOnly => okToMqttStatus == OkToMqttStatus.True,
                 UplinkMode.MqttOkTrueAndUnknown => okToMqttStatus == OkToMqttStatus.True || okToMqttStatus == OkToMqttStatus.Unknown,
+                UplinkMode.MqttOkTrueAndUnknownAndFalseExceptPosition => 
+                    okToMqttStatus == OkToMqttStatus.True 
+                         || okToMqttStatus == OkToMqttStatus.Unknown
+                         || okToMqttStatus == OkToMqttStatus.False_NotPosition,
                 UplinkMode.All => true,
                 UplinkMode.MqttNotOkOnly => okToMqttStatus == OkToMqttStatus.False_NotPosition
                     || okToMqttStatus == OkToMqttStatus.False_IsPosition,
+                UplinkMode.MqttNotOkAndUnknown => okToMqttStatus == OkToMqttStatus.False_NotPosition
+                    || okToMqttStatus == OkToMqttStatus.False_IsPosition
+                    || okToMqttStatus == OkToMqttStatus.Unknown,
+                UplinkMode.MqttNotOkAndUnknownExceptPosition => okToMqttStatus == OkToMqttStatus.False_NotPosition
+                    || okToMqttStatus == OkToMqttStatus.Unknown,
                 UplinkMode.MqttNotOkOnlyExceptPosition => okToMqttStatus == OkToMqttStatus.False_NotPosition,
                 _ => throw new NotImplementedException($"UplinkMode {uplinkMode} not implemented")
             };

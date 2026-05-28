@@ -78,7 +78,10 @@ public enum UplinkMode
     Disabled,
     MqttOkExplicitTrueOnly,
     MqttOkTrueAndUnknown,
+    MqttOkTrueAndUnknownAndFalseExceptPosition,
     All,
+    MqttNotOkAndUnknown,
+    MqttNotOkAndUnknownExceptPosition,
     MqttNotOkOnly,
     MqttNotOkOnlyExceptPosition
 }
