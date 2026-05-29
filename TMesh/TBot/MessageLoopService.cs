@@ -830,7 +830,7 @@ public class MessageLoopService(
             throw new Exception("Trying to uplink a packet that was received via MQTT, this should not happen");
         }
 
-        bool willUplink = mapMqttService.ShouldUplink(okToMqttStatus);
+        bool willUplink = mapMqttService.ShouldUplink(okToMqttStatus, networkId);
         if (!willUplink)
         {
             return;

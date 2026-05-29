@@ -17,6 +17,7 @@ namespace TBot
         IOptions<TBotOptions> options,
         MqttClientFactory mqttClientFactory) : IAsyncDisposable
     {
+        private const int ConnectMillisecondsTtl = 30_000;
         private const int ReconnectMillisecondsDelay = 10000;
 #if DEBUG
         const string ClientId = "TMeshDebug";
@@ -29,6 +30,7 @@ namespace TBot
         private readonly TBotOptions _options = options.Value;
         private Dictionary<int, NetworkShortInfo> _networks;
         private ILookup<string, int> _networkByShortName;
+        private readonly List<Task> _connectTasks = new List<Task>();
 
         private readonly List<(IMqttClient mqttClient, MapMqttServerOptions server)> _clients = [];
 
@@ -77,9 +79,12 @@ namespace TBot
 
             await FillNetworks(scope);
 
+            _connectTasks.Clear();
+
             foreach (var server in _options.MapMqttServers.Where(x => x.AnalyticsDownlinkEnabled || x.UplinkMode != UplinkMode.Disabled))
             {
-                await ConnectServerAsync(server, ct);
+                var t = Task.Run(async () => await ConnectServerAsync(server, ct), ct);
+                _connectTasks.Add(t);
             }
         }
 
@@ -108,9 +113,11 @@ namespace TBot
         public bool UplinkEnabled => _clients?.Any(x => x.server.UplinkMode != UplinkMode.Disabled) == true;
 
 
-        public bool ShouldUplink(OkToMqttStatus okToMqttStatus)
+        public bool ShouldUplink(OkToMqttStatus okToMqttStatus, int networkId)
         {
-            foreach (var (_, server) in _clients.Where(x => x.server.UplinkMode != UplinkMode.Disabled))
+            foreach (var (_, server) in _clients.Where(x => 
+                    x.server.UplinkMode != UplinkMode.Disabled
+                    && (x.server.FilterByNetworkId == null || x.server.FilterByNetworkId == networkId)))
             {
                 if (ShouldUplink(okToMqttStatus, server.UplinkMode))
                 {
@@ -126,7 +133,10 @@ namespace TBot
           ServiceEnvelope envelope)
         {
             bool published = false;
-            foreach (var (client, server) in _clients.Where(x => x.server.UplinkMode != UplinkMode.Disabled && x.mqttClient.IsConnected))
+            foreach (var (client, server) in _clients.Where(x => 
+                x.server.UplinkMode != UplinkMode.Disabled 
+                && x.mqttClient.IsConnected
+                && (x.server.FilterByNetworkId == null || x.server.FilterByNetworkId == networkId)))
             {
                 var shouldUplink = ShouldUplink(okToMqttStatus, server.UplinkMode);
                 if (shouldUplink)
@@ -228,10 +238,10 @@ namespace TBot
                     }
                     logger.LogWarning("MapMqtt [{Server}] disconnected: {Reason}", server.Address, e.Reason);
                     await Task.Delay(ReconnectMillisecondsDelay, _connectionCts.Token);
-                    await ForceConnectClientAsync(client, server, _connectionCts.Token);
+                    await ConnectClientAsync(client, server, _connectionCts.Token);
                 };
 
-                await ForceConnectClientAsync(client, server, ct);
+                await ConnectClientAsync(client, server, ct);
             }
             catch (Exception ex)
             {
@@ -239,30 +249,11 @@ namespace TBot
             }
         }
 
-
-        private async Task ForceConnectClientAsync(IMqttClient client, MapMqttServerOptions server, CancellationToken ct)
-        {
-            bool connected = false;
-            while (!connected)
-            {
-                try
-                {
-                    connected = await ConnectClientAsync(client, server, ct);
-                }
-                catch (OperationCanceledException)
-                {
-                    return; // shutting down
-                }
-                if (!connected)
-                {
-                    logger.LogInformation("Retrying MapMqtt [{Server}] connection...", server.Address);
-                    await Task.Delay(ReconnectMillisecondsDelay, ct);
-                }
-            }
-        }
-
         private async Task<bool> ConnectClientAsync(IMqttClient client, MapMqttServerOptions server, CancellationToken ct)
         {
+            if (client.IsConnected)
+                return true;
+
             try
             {
                 var sslOptions = new MqttClientTlsOptions
@@ -288,7 +279,11 @@ namespace TBot
                 if (!string.IsNullOrWhiteSpace(server.User))
                     builder = builder.WithCredentials(server.User, server.Password);
 
-                var result = await client.ConnectAsync(builder.Build(), ct);
+                logger.LogInformation("MapMqtt [{Server}] connecting...", server.Address);
+
+                using var timeoutCts = new CancellationTokenSource(ConnectMillisecondsTtl);
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+                var result = await client.ConnectAsync(builder.Build(), linkedCts.Token);
                 if (result.ResultCode != MqttClientConnectResultCode.Success)
                 {
                     logger.LogError("MapMqtt [{Server}] failed to connect: {Code}", server.Address, result.ResultCode);

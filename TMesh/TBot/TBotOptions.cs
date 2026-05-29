@@ -98,6 +98,7 @@ public class MapMqttServerOptions
     public string MapTopic { get; set; }
     public UplinkMode UplinkMode { get; set; }
     public bool AnalyticsDownlinkEnabled { get; set; }
+    public int? FilterByNetworkId { get; set; }
     public int? DefaultNetworkId { get; set; }
 
 }
