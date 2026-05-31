@@ -17,8 +17,7 @@ namespace Shared.Models
         public int Devices24h { get; set; }
         public int Devices { get; set; }
 
-        public int Devices48h_OnOther { get; set; }
-        public int Devices48h_OnPrimary { get; set; }
+        public Dictionary<int, int> Devices48h_ByChannel { get; set; }
 
         public List<ActiveVoteStats> ActiveVotes { get; set; }
 

@@ -941,7 +941,8 @@ namespace TBot.Bot
             int? publicChannelIdWithPreset = null;
             if (message.DecodedBy.IsPublicChannel)
             {
-                var channel = await registrationService.GetPublicChannelByIdCachedAsync(message.DecodedBy.RecipientPublicChannelId.Value);
+                var channel = message.DecodedBy as PublicChannel 
+                    ?? await registrationService.GetPublicChannelByIdCachedAsync(message.DecodedBy.RecipientPublicChannelId.Value);
 
                 if (channel != null && (channel.IsPrimary || channel.SendNodeInfoOnSecondary))
                 {

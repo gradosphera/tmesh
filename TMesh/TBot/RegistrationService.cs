@@ -802,7 +802,10 @@ namespace TBot
                 entity.NodeName = nodeName;
                 entity.HardwareModel = hardwareModel;
                 entity.MacAddress = macAddress;
-                entity.NodeInfoOnPublicChannelId ??= nodeInfoFromPublicChannelId;
+                if (nodeInfoFromPublicChannelId != null)
+                {
+                    entity.NodeInfoOnPublicChannelId = nodeInfoFromPublicChannelId;
+                }
                 entity.UpdatedUtc = now;
                 entity.Role = role;
                 entity.LastUpdatePacketId = meshPacketId;
@@ -815,7 +818,10 @@ namespace TBot
                 entity.NetworkId = networkId;
                 entity.NodeName = nodeName;
                 entity.Role = role;
-                entity.NodeInfoOnPublicChannelId ??= nodeInfoFromPublicChannelId;
+                if (nodeInfoFromPublicChannelId != null)
+                {
+                    entity.NodeInfoOnPublicChannelId = nodeInfoFromPublicChannelId;
+                }
                 entity.HardwareModel = hardwareModel;
                 entity.MacAddress = macAddress;
                 entity.UpdatedUtc = now;
@@ -1127,6 +1133,21 @@ namespace TBot
         {
             return await db.Devices.CountAsync(d => d.NetworkId == networkId 
                 && d.UpdatedUtc >= fromUtc && d.NodeInfoOnPublicChannelId != null && d.NodeInfoOnPublicChannelId != publicChannelId);
+        }
+
+        public async Task<Dictionary<int, int>> GetActiveDeviceCountByPublicChannel(
+            int networkId,
+            DateTime fromUtc)
+        {
+            return await (from d in db.Devices
+                         where d.NetworkId == networkId
+                            && d.UpdatedUtc >= fromUtc
+                          group d.NodeInfoOnPublicChannelId by d.NodeInfoOnPublicChannelId ?? -1 into g
+                         select new
+                         {
+                             PublicChannelId = g.Key,
+                             DeviceCount = g.Count()
+                         }).ToDictionaryAsync(x => x.PublicChannelId, x => x.DeviceCount);
         }
 
         public async Task<(int totalCount, string[] sampleNames)> GetDeviceCountForMassDirectMessage(

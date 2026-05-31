@@ -331,10 +331,6 @@ public class MessageLoopService(
 
         foreach (var network in networks)
         {
-            var primaryChannel = await registrationService.GetNetworkPrimaryChannelCached(network.Id);
-
-
-
             var networkStats = new NetworkStats
             {
                 Id = network.Id,
@@ -346,8 +342,7 @@ public class MessageLoopService(
                 ChannelChatRegistrations = await registrationService.GetChannelRegistrationsCountByNetwork(network.Id),
                 Devices = await registrationService.GetDevicesCountByNetwork(network.Id),
                 Devices24h = await registrationService.GetActiveDevicesCountByNetwork(network.Id, hours24ago),
-                Devices48h_OnOther = await registrationService.GetActiveDevicesNotOnPublicChannelCountByNetwork(network.Id, hours48ago, primaryChannel?.Id ?? -1),
-                Devices48h_OnPrimary = await registrationService.GetActiveDevicesOnPublicChannelCountByNetwork(network.Id, hours48ago, primaryChannel?.Id ?? -1),
+                Devices48h_ByChannel = (await registrationService.GetActiveDeviceCountByPublicChannel(network.Id, hours48ago)),
                 GatewaysLastSeen = await GetGatewaysLastSeenStatByNetwork(now, registrationService, network.Id)
             };
 
