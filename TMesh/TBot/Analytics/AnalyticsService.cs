@@ -200,6 +200,7 @@ namespace TBot.Analytics
                     {
                         NetworkId = networkId,
                         ToDeviceId = (uint)pair.ToDeviceId,
+                        ViaDeviceId = (uint)pair.FromDeviceId,
                         FromDeviceId = (uint)pair.FromDeviceId,
                         Hops = 0,
                         DirectSnr = pair.Snr,
@@ -242,6 +243,7 @@ namespace TBot.Analytics
                         {
                             NetworkId = networkId,
                             ToDeviceId = (uint)pair.ToDeviceId,
+                            ViaDeviceId = (uint)pair.FromDeviceId,
                             FromDeviceId = (uint)previousPair.FromDeviceId,
                             Hops = (byte)(i - j),
                             DirectSnr = null,

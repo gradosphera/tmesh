@@ -59,6 +59,22 @@ public class AnalyticsDbContext(DbContextOptions<AnalyticsDbContext> options) : 
             e.Property(r => r.AvgHops).IsRequired().HasDefaultValue(0);
         });
 
+        modelBuilder.Entity<TraceRouteLinkStat>(e =>
+        {
+            e.HasKey(r => new { r.NetworkId, r.RecDate, r.ViaDeviceId, r.ToDeviceId, r.FromDeviceId });
+            e.Property(r => r.NetworkId).IsRequired();
+            e.Property(r => r.RecDate).IsRequired();
+            e.Property(r => r.ViaDeviceId).IsRequired();
+            e.Property(r => r.ToDeviceId).IsRequired();
+            e.Property(r => r.FromDeviceId).IsRequired();
+            e.Property(r => r.Count).IsRequired().HasDefaultValue(0);
+            e.Property(r => r.WithDistanceCount).IsRequired().HasDefaultValue(0);
+            e.Property(r => r.WithLinkLengthCount).IsRequired().HasDefaultValue(0);
+            e.Property(r => r.WithSnrCount).IsRequired().HasDefaultValue(0);
+            e.Property(r => r.AvgSnr);
+            e.Property(r => r.AvgHops).IsRequired().HasDefaultValue(0);
+        });
+
         modelBuilder.Entity<City>(e =>
         {
             e.HasKey(r => r.Id);

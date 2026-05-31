@@ -13,6 +13,7 @@ namespace TBot.Analytics.Models
         public int NetworkId { get; set; }
         public LocalDate RecDate { get; set; }
         public uint ToDeviceId { get; set; }
+        public uint? ViaDeviceId { get; set; }
         public uint FromDeviceId { get; set; }
         public byte Hops { get; set; }
         public float? DirectSnr { get; set; }
