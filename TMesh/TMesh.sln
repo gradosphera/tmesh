@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.14.36603.0
+# Visual Studio Version 18
+VisualStudioVersion = 18.6.11822.322 stable
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TProxy", "TProxy\TProxy.csproj", "{AEC0BA98-DC22-4B2D-B573-B8EB3195F789}"
 EndProject
@@ -24,6 +24,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Configs", "Configs", "{02EA
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Shared", "Shared\Shared.csproj", "{3A4D9908-14D9-4D40-BE8C-81184BBA3F5A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Misc", "Misc\Misc.csproj", "{093C4A48-DDE3-4E64-A8C9-25FAFBBBF5F6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -42,6 +44,10 @@ Global
 		{3A4D9908-14D9-4D40-BE8C-81184BBA3F5A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3A4D9908-14D9-4D40-BE8C-81184BBA3F5A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3A4D9908-14D9-4D40-BE8C-81184BBA3F5A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{093C4A48-DDE3-4E64-A8C9-25FAFBBBF5F6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{093C4A48-DDE3-4E64-A8C9-25FAFBBBF5F6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{093C4A48-DDE3-4E64-A8C9-25FAFBBBF5F6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{093C4A48-DDE3-4E64-A8C9-25FAFBBBF5F6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
