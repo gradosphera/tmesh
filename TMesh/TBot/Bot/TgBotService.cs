@@ -545,11 +545,41 @@ namespace TBot.Bot
 
         public static void Register(IServiceCollection services)
         {
+            const string DefaultProxyAuthHeader = "X-Api-Key";
+
+            // Register a named HttpClient for Telegram Bot API calls.
+            // When TelegramApiProxyUrl is set it injects the proxy auth header on every request.
+            services.AddHttpClient("TelegramBotClient", (s, client) =>
+            {
+                var opts = s.GetRequiredService<IOptions<TBotOptions>>().Value;
+                if (!string.IsNullOrWhiteSpace(opts.TelegramApiProxyUrl)
+                    && !string.IsNullOrWhiteSpace(opts.TelegramApiProxyAuthSecret))
+                {
+                    var headerName = string.IsNullOrWhiteSpace(opts.TelegramApiProxyAuthHeader)
+                        ? DefaultProxyAuthHeader
+                        : opts.TelegramApiProxyAuthHeader;
+                    client.DefaultRequestHeaders.TryAddWithoutValidation(headerName, opts.TelegramApiProxyAuthSecret);
+                }
+            });
+
             services.AddScoped(s =>
             {
-                var options = s.GetRequiredService<IOptions<TBotOptions>>();
-                return new TelegramBotClient(options.Value.TelegramApiToken);
+                var opts = s.GetRequiredService<IOptions<TBotOptions>>().Value;
+                var httpClientFactory = s.GetRequiredService<IHttpClientFactory>();
+                var httpClient = httpClientFactory.CreateClient("TelegramBotClient");
+
+                // Route through TProxy when configured, otherwise use default api.telegram.org
+                if (!string.IsNullOrWhiteSpace(opts.TelegramApiProxyUrl))
+                {
+                    var botOptions = new TelegramBotClientOptions(
+                        opts.TelegramApiToken,
+                        baseUrl: opts.TelegramApiProxyUrl.TrimEnd('/'));
+                    return new TelegramBotClient(botOptions, httpClient);
+                }
+
+                return new TelegramBotClient(opts.TelegramApiToken, httpClient);
             });
+
             services.AddSingleton<MeshtasticService>();
             services.AddSingleton<BotCache>();
             services.AddScoped<RegistrationService>();
@@ -559,6 +589,7 @@ namespace TBot.Bot
             services.AddScoped<MeshtasticBotService>();
             services.AddScoped<MeshtasticBotMsgStatusTracker>();
         }
+
 
         public Task ProcessInboundTelegramUpdate(string payload)
         {

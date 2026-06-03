@@ -174,6 +174,7 @@ namespace TBot.Bot
                     $"{device.NodeName} sent a location:");
                 if (msg == null) continue;
 
+
                 await botClient.SendLocation(
                         chatId,
                         message.Latitude,

@@ -19,6 +19,26 @@ public class TBotOptions
     public string TelegramUpdateWebhookUrl { get; set; }
     public string TelegramBotUserName { get; set; }
 
+    /// <summary>
+    /// Base URL of the TProxy Telegram Bot API proxy (e.g. "https://tproxy.example.com").
+    /// When set, all Bot API calls are routed through TProxy instead of api.telegram.org.
+    /// Leave null/empty to use the default Telegram API endpoint.
+    /// </summary>
+    public string TelegramApiProxyUrl { get; set; }
+
+    /// <summary>
+    /// HTTP header name sent to TProxy for stealth authentication.
+    /// Defaults to "X-Api-Key" when null/empty.
+    /// Only used when <see cref="TelegramApiProxyUrl"/> is set.
+    /// </summary>
+    public string TelegramApiProxyAuthHeader { get; set; }
+
+    /// <summary>
+    /// Secret value sent in <see cref="TelegramApiProxyAuthHeader"/> to authenticate with TProxy.
+    /// Only used when <see cref="TelegramApiProxyUrl"/> is set.
+    /// </summary>
+    public string TelegramApiProxyAuthSecret { get; set; }
+
     public int TelegramBotMaxConnections { get; set; }
     public string SQLiteConnectionString { get; set; }
     public string AnalyticsPostgresConnectionString { get; set; }
