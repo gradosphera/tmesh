@@ -3,11 +3,15 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.IO.Hashing;
 
 namespace TBot.Helpers
 {
     public static class HashHelper
     {
+
+        public static uint GetCRC32(byte[] bytes)
+             => Crc32.HashToUInt32(bytes);
 
         public static int ColorIndexFromDeviceId(uint deviceId, int colorCount)
         {

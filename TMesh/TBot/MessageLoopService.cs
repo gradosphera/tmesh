@@ -53,6 +53,12 @@ public class MessageLoopService(
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        var (valid, nodeId) = meshtasticService.ValidateNodeIdMatchPublicKeyIfSignEnabled();
+        if (!valid)
+        {
+            throw new InvalidOperationException($"Meshtastic node ID {_options.MeshtasticNodeId} does not match the public key in the configuration. Required node id - {nodeId}. When EnableBroadcastSigning is enabled, the node ID must be CRC32 of the public key.");
+        }
+
         _stopCancellationTokenSource = new CancellationTokenSource();
 
         uptimeService.Reset();

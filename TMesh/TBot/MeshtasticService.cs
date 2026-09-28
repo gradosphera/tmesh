@@ -10,6 +10,8 @@ using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Security;
 using Serilog;
 using Shared.Models;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
 using System.Text;
 using TBot.Analytics.Models;
@@ -22,11 +24,7 @@ using TBot.Models.Uplink;
 
 namespace TBot
 {
-    public class MeshtasticService(
-        LocalMessageQueueService localMessageQueueService,
-        IMemoryCache memoryCache,
-        IOptions<TBotOptions> options,
-        ILogger<MeshtasticService> logger) : IDisposable
+    public class MeshtasticService : IDisposable
     {
         public const int MaxTextMessageBytes = 233 - MESHTASTIC_PKC_OVERHEAD;
         public const int MaxHops = 7;
@@ -50,8 +48,41 @@ namespace TBot
         private const int MaxMacAddrLengthBytes = 8;
         private static readonly Dictionary<int, LinkedList<MeshStat>> meshStatsByNetwork = [];
         private readonly Dictionary<int, LinkedList<MeshStat>> _meshStatsQueueByNetwork = meshStatsByNetwork;
-        private readonly TBotOptions _options = options.Value;
+        private readonly TBotOptions _options;
         private readonly CancellationTokenSource _cancellationTokenSource = new();
+        private readonly LocalMessageQueueService localMessageQueueService;
+        private readonly IMemoryCache memoryCache;
+        private readonly ILogger<MeshtasticService> logger;
+        private byte[] _privateKey;
+        private byte[] _edsaPrivateKey;
+        private byte[] _edsaPublicKey;
+
+        public MeshtasticService(
+            LocalMessageQueueService localMessageQueueService,
+            IMemoryCache memoryCache,
+            IOptions<TBotOptions> options,
+            ILogger<MeshtasticService> logger)
+        {
+            this.localMessageQueueService = localMessageQueueService;
+            this.memoryCache = memoryCache;
+            this.logger = logger;
+            _options = options.Value;
+            _privateKey = Convert.FromBase64String(options.Value.MeshtasticPrivateKeyBase64);
+            if (_options.EnableBroadcastSigning)
+            {
+                (_edsaPrivateKey, _edsaPublicKey) = XEdDSASigning.GenerateEdDSAKeysFromX25519(_privateKey);
+            }
+        }
+
+        public (bool valid, long nodeId) ValidateNodeIdMatchPublicKeyIfSignEnabled()
+        {
+            if (_options.EnableBroadcastSigning)
+            {
+                var nodeId = HashHelper.GetCRC32(Convert.FromBase64String(_options.MeshtasticPublicKeyBase64));
+                return (nodeId == _options.MeshtasticNodeId, nodeId);
+            }
+            return (true, _options.MeshtasticNodeId);
+        }
 
         public QueueResult SendPublicTextMessage(
             long newMessageId,
@@ -600,7 +631,7 @@ namespace TBot
             if (publicKey != null && publicKey.Length > 0)
             {
                 Meshtastic.Crypto.PKIEncryption.Encrypt(
-                    Convert.FromBase64String(_options.MeshtasticPrivateKeyBase64),
+                    _privateKey,
                     publicKey,
                     packet
                 );
@@ -658,7 +689,7 @@ namespace TBot
             if (publicKey != null && publicKey.Length > 0)
             {
                 Meshtastic.Crypto.PKIEncryption.Encrypt(
-                    Convert.FromBase64String(_options.MeshtasticPrivateKeyBase64),
+                    _privateKey,
                     publicKey,
                     packet
                 );
@@ -1040,13 +1071,22 @@ namespace TBot
             return packet;
         }
 
-        private static MeshPacket EncryptPacketWithPsk(MeshPacket packet, IRecipient channel)
+        private MeshPacket EncryptPacketWithPsk(MeshPacket packet, IRecipient channel)
         {
             return EncryptPacketWithPsk(packet, channel.RecipientChannelXor.Value, channel.RecipientKey);
         }
 
-        private static MeshPacket EncryptPacketWithPsk(MeshPacket packet, byte channelXorHash, byte[] channelPsk)
+        private MeshPacket EncryptPacketWithPsk(MeshPacket packet, byte channelXorHash, byte[] channelPsk)
         {
+            if (_options.EnableBroadcastSigning
+                && packet.From == _options.MeshtasticNodeId
+                && packet.To == BroadcastDeviceId
+                && XEdDSASigning.CanSignPacket(packet))
+            {
+                XEdDSASigning.AddPacketSignature(_edsaPrivateKey, _edsaPublicKey, packet);
+                packet.XeddsaSigned = true;
+            }
+
             var input = packet.Decoded.ToByteArray();
             var nonce = new Meshtastic.Crypto.NonceGenerator(packet.From, packet.Id);
             var encrypted = TransformPacket(input, nonce.Create(), channelPsk, true);
@@ -1221,7 +1261,7 @@ namespace TBot
             }
 
             (var pkiOk, var decodedPki) = DecryptPKI(
-                Convert.FromBase64String(_options.MeshtasticPrivateKeyBase64),
+                _privateKey,
                 publicKey,
                 envelope.Packet);
 

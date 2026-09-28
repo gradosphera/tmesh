@@ -56,6 +56,8 @@ public class TBotOptions
     public string MeshtasticPublicKeyBase64 { get; set; }
     public string MeshtasticPrivateKeyBase64 { get; set; }
 
+    public bool EnableBroadcastSigning { get; set; }
+
     public int MeshtasticMaxOutgoingMessagesPerMinute { get; set; }
 
     public int SentTBotNodeInfoEverySeconds { get; set; }
