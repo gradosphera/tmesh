@@ -116,6 +116,7 @@ public class AzureBlobBackupOptions
 {
     public string ConnectionString { get; set; }
     public AzureBlobBackupPathOptions BackupPath { get; set; }
+    public int SkipIfBlobUpdatedLessThanHours { get; set; }
 }
 
 public class AzureBlobBackupPathOptions

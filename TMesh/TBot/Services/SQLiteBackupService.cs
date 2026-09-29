@@ -1,3 +1,4 @@
+using Azure;
 using Azure.Storage.Blobs;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
@@ -52,6 +53,33 @@ public class SQLiteBackupService(
         await containerClient.CreateIfNotExistsAsync();
 
         var blobClient = containerClient.GetBlobClient(backupOptions.BackupPath.BlobPath);
+        var skipIfUpdatedLessThan = TimeSpan.FromHours(backupOptions.SkipIfBlobUpdatedLessThanHours);
+        if (skipIfUpdatedLessThan > TimeSpan.Zero)
+        {
+            try
+            {
+                var blobProperties = await blobClient.GetPropertiesAsync();
+                var lastModified = blobProperties.Value.LastModified;
+                var age = DateTimeOffset.UtcNow - lastModified;
+
+                if (age < skipIfUpdatedLessThan)
+                {
+                    logger.LogInformation(
+                        "Skipping SQLite backup because blob {ContainerName}/{BlobPath} was last updated {LastModifiedUtc} ({Age}) ago, which is less than the configured threshold of {ThresholdHours} hours.",
+                        backupOptions.BackupPath.ContainerName,
+                        backupOptions.BackupPath.BlobPath,
+                        lastModified,
+                        age,
+                        backupOptions.SkipIfBlobUpdatedLessThanHours);
+                    return;
+                }
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                // Blob does not exist yet, proceed with upload.
+            }
+        }
+
         await using var stream = new FileStream(databasePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         await blobClient.UploadAsync(stream, overwrite: true);
 
