@@ -897,8 +897,14 @@ namespace TBot
 
         public static (string publicKeyBase64, string privateKeyBase64) GenerateKeyPairBase64()
         {
-            var (privateKey, publicKey) = GenerateKeyPair();
+            var (publicKey, privateKey) = GenerateKeyPair();
             return (Convert.ToBase64String(publicKey), Convert.ToBase64String(privateKey));
+        }
+
+        public static (byte[] publicKey, byte[] privateKey) GenerateKeyPair()
+        {
+            var (privateKey, publicKey) = Meshtastic.Crypto.PKIEncryption.GenerateKeyPair();
+            return (publicKey, privateKey);
         }
 
         public static (byte[] publicKey, byte[] privateKey) GenerateKeyPair()

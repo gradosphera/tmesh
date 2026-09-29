@@ -59,10 +59,10 @@ namespace TBot
 
             foreach (var entity in rowsToBackfill)
             {
-                var keyPair = MeshtasticService.GenerateKeyPair();
-                entity.VirtualNodePublicKey = keyPair.publicKey;
-                entity.VirtualNodePrivateKey = keyPair.privateKey;
-                entity.VirtualNodeId = HashHelper.GetCRC32(keyPair.publicKey);
+                var (publicKey, privateKey) = MeshtasticService.GenerateKeyPair();
+                entity.VirtualNodePublicKey = publicKey;
+                entity.VirtualNodePrivateKey = privateKey;
+                entity.VirtualNodeId = HashHelper.GetCRC32(publicKey);
                 entity.UpdatedUtc = DateTime.UtcNow;
             }
 
@@ -313,7 +313,7 @@ namespace TBot
             return res;
         }
 
-      
+
 
         /// <summary>
         /// Returns channels on which virtual node info should be sent:
@@ -731,11 +731,11 @@ namespace TBot
                     NetworkId = networkId
                 };
 
-                var keyPair = MeshtasticService.GenerateKeyPair();
+                var (publicKey, privateKey) = MeshtasticService.GenerateKeyPair();
 
-                entity.VirtualNodePublicKey = keyPair.publicKey;
-                entity.VirtualNodePrivateKey = keyPair.privateKey;
-                entity.VirtualNodeId = HashHelper.GetCRC32(keyPair.publicKey);
+                entity.VirtualNodePublicKey = publicKey;
+                entity.VirtualNodePrivateKey = privateKey;
+                entity.VirtualNodeId = HashHelper.GetCRC32(publicKey);
 
                 db.GatewayRegistrations.Add(entity);
             }
@@ -1239,7 +1239,7 @@ namespace TBot
             DateTime fromUtc,
             int publicChannelId)
         {
-            return await db.Devices.CountAsync(d => d.NetworkId == networkId 
+            return await db.Devices.CountAsync(d => d.NetworkId == networkId
                 && d.UpdatedUtc >= fromUtc && d.NodeInfoOnPublicChannelId != null && d.NodeInfoOnPublicChannelId != publicChannelId);
         }
 
@@ -1248,19 +1248,19 @@ namespace TBot
             DateTime fromUtc)
         {
             return await (from d in db.Devices
-                         where d.NetworkId == networkId
-                            && d.UpdatedUtc >= fromUtc
+                          where d.NetworkId == networkId
+                             && d.UpdatedUtc >= fromUtc
                           group d.NodeInfoOnPublicChannelId by d.NodeInfoOnPublicChannelId ?? -1 into g
-                         select new
-                         {
-                             PublicChannelId = g.Key,
-                             DeviceCount = g.Count()
-                         }).ToDictionaryAsync(x => x.PublicChannelId, x => x.DeviceCount);
+                          select new
+                          {
+                              PublicChannelId = g.Key,
+                              DeviceCount = g.Count()
+                          }).ToDictionaryAsync(x => x.PublicChannelId, x => x.DeviceCount);
         }
 
         public async Task<(int totalCount, string[] sampleNames)> GetDeviceCountForMassDirectMessage(
-            int networkId, 
-            DateTime? activeAfterUtc, 
+            int networkId,
+            DateTime? activeAfterUtc,
             string nameRegexPattern,
             int sampleSize)
         {
@@ -1540,7 +1540,7 @@ namespace TBot
             });
         }
 
-        
+
 
         public async Task<List<PublicChannel>> GetAllPublicChannelsAsync()
         {
@@ -1661,7 +1661,7 @@ namespace TBot
             var virtualDevice = new VirtualGatewayDevice
             {
                 Id = registration.VirtualNodeId,
-                Name = String.Concat(device?.NodeName ?? $"Gateway-{gatewayId}", " via TMesh"),
+                Name = String.Concat(device?.NodeName ?? $"Gateway-{gatewayId}"),
                 ShortName = String.Concat("T", (registration.VirtualNodeId % 1000).ToString("D3")),
                 GatewayId = gatewayId,
                 PrivateKey = registration.VirtualNodePrivateKey,
