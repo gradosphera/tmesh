@@ -21,8 +21,10 @@ namespace TBot
         BotCache botCache,
         ILogger<RegistrationService> logger)
     {
+        private const string VirtualNodesMigrationId = "20260929194834_VirtualNodes";
         public const int MaxCodeVerificationTries = 5;
         private const string DeviceCachePrefix = "DeviceCache#";
+        private const string VirtualGatewayDeviceCachePrefix = "VirtualGatewayDeviceCache#";
         private static readonly TimeSpan DeviceCacheDuration = TimeSpan.FromHours(1);
         private readonly TBotOptions _options = options.Value;
 
@@ -30,13 +32,42 @@ namespace TBot
         {
             try
             {
+                var pendingMigrations = await db.Database.GetPendingMigrationsAsync();
                 await db.Database.MigrateAsync();
+                if (pendingMigrations.Contains(VirtualNodesMigrationId, StringComparer.Ordinal))
+                {
+                    await BackfillGatewayVirtualNodesAsync();
+                }
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Failed applying migrations");
                 throw;
             }
+        }
+
+        private async Task BackfillGatewayVirtualNodesAsync()
+        {
+            var rowsToBackfill = await db.GatewayRegistrations
+                .Where(g => g.VirtualNodeId == 0 || g.VirtualNodePublicKey == null || g.VirtualNodePrivateKey == null)
+                .ToListAsync();
+
+            if (rowsToBackfill.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var entity in rowsToBackfill)
+            {
+                var (publicKey, privateKey) = MeshtasticService.GenerateKeyPair();
+                entity.VirtualNodePublicKey = publicKey;
+                entity.VirtualNodePrivateKey = privateKey;
+                entity.VirtualNodeId = HashHelper.GetCRC32(publicKey);
+                entity.UpdatedUtc = DateTime.UtcNow;
+            }
+
+            await db.SaveChangesAsync();
+            logger.LogInformation("Backfilled virtual node keys for {Count} gateway registrations.", rowsToBackfill.Count);
         }
 
         public async Task DeleteAllDataInDB(string password)
@@ -282,7 +313,7 @@ namespace TBot
             return res;
         }
 
-      
+
 
         /// <summary>
         /// Returns channels on which virtual node info should be sent:
@@ -644,6 +675,7 @@ namespace TBot
 
         // Device public key storage and lookup
         private static string GetDeviceCacheKey(long deviceId) => DeviceCachePrefix + deviceId;
+        private static string GetGatewayVirtualDeviceCacheKey(long gatewayId) => VirtualGatewayDeviceCachePrefix + gatewayId;
 
 
         public async Task<Device> GetDeviceAsync(long deviceId)
@@ -661,6 +693,12 @@ namespace TBot
                 return entity;
             }
             return null;
+        }
+
+        public async Task<GatewayRegistration> GetGatewayRegistration(long gatewayId)
+        {
+            return await db.GatewayRegistrations.AsNoTracking()
+                .FirstOrDefaultAsync(g => g.DeviceId == gatewayId);
         }
 
         public Task<Dictionary<long, GatewayInfo>> GetGatewaysCached()
@@ -692,6 +730,13 @@ namespace TBot
                     UpdatedUtc = now,
                     NetworkId = networkId
                 };
+
+                var (publicKey, privateKey) = MeshtasticService.GenerateKeyPair();
+
+                entity.VirtualNodePublicKey = publicKey;
+                entity.VirtualNodePrivateKey = privateKey;
+                entity.VirtualNodeId = HashHelper.GetCRC32(publicKey);
+
                 db.GatewayRegistrations.Add(entity);
             }
             else
@@ -712,6 +757,7 @@ namespace TBot
             db.GatewayRegistrations.Remove(entity);
             await db.SaveChangesAsync();
             memoryCache.Remove("GatewayNodeIds");
+            memoryCache.Remove(GetGatewayVirtualDeviceCacheKey(deviceId));
             return true;
         }
 
@@ -754,6 +800,10 @@ namespace TBot
             db.GatewayRegistrations.RemoveRange(inactive);
             await db.SaveChangesAsync();
             memoryCache.Remove("GatewayNodeIds");
+            foreach (var gw in inactive)
+            {
+                memoryCache.Remove(GetGatewayVirtualDeviceCacheKey(gw.DeviceId));
+            }
 
             return result;
         }
@@ -1189,7 +1239,7 @@ namespace TBot
             DateTime fromUtc,
             int publicChannelId)
         {
-            return await db.Devices.CountAsync(d => d.NetworkId == networkId 
+            return await db.Devices.CountAsync(d => d.NetworkId == networkId
                 && d.UpdatedUtc >= fromUtc && d.NodeInfoOnPublicChannelId != null && d.NodeInfoOnPublicChannelId != publicChannelId);
         }
 
@@ -1198,19 +1248,19 @@ namespace TBot
             DateTime fromUtc)
         {
             return await (from d in db.Devices
-                         where d.NetworkId == networkId
-                            && d.UpdatedUtc >= fromUtc
+                          where d.NetworkId == networkId
+                             && d.UpdatedUtc >= fromUtc
                           group d.NodeInfoOnPublicChannelId by d.NodeInfoOnPublicChannelId ?? -1 into g
-                         select new
-                         {
-                             PublicChannelId = g.Key,
-                             DeviceCount = g.Count()
-                         }).ToDictionaryAsync(x => x.PublicChannelId, x => x.DeviceCount);
+                          select new
+                          {
+                              PublicChannelId = g.Key,
+                              DeviceCount = g.Count()
+                          }).ToDictionaryAsync(x => x.PublicChannelId, x => x.DeviceCount);
         }
 
         public async Task<(int totalCount, string[] sampleNames)> GetDeviceCountForMassDirectMessage(
-            int networkId, 
-            DateTime? activeAfterUtc, 
+            int networkId,
+            DateTime? activeAfterUtc,
             string nameRegexPattern,
             int sampleSize)
         {
@@ -1490,7 +1540,7 @@ namespace TBot
             });
         }
 
-        
+
 
         public async Task<List<PublicChannel>> GetAllPublicChannelsAsync()
         {
@@ -1589,6 +1639,38 @@ namespace TBot
             {
                 throw new InvalidOperationException("Invalid DeviceOrChannelId with no DeviceId and no ChannelId");
             }
+        }
+
+        public async Task<VirtualGatewayDevice> GetGatewayVirtualDevice(long gatewayId)
+        {
+            if (memoryCache.TryGetValue<VirtualGatewayDevice>(GetGatewayVirtualDeviceCacheKey(gatewayId), out var cached))
+            {
+                return cached;
+            }
+
+            var registration = await db.GatewayRegistrations.AsNoTracking()
+                .FirstOrDefaultAsync(g => g.DeviceId == gatewayId);
+
+            if (registration == null)
+            {
+                return null;
+            }
+
+            var device = await GetDeviceAsync(gatewayId);
+
+            var virtualDevice = new VirtualGatewayDevice
+            {
+                Id = registration.VirtualNodeId,
+                Name = String.Concat(device?.NodeName ?? $"Gateway-{gatewayId}"),
+                ShortName = String.Concat("T", (registration.VirtualNodeId % 1000).ToString("D3")),
+                GatewayId = gatewayId,
+                PrivateKey = registration.VirtualNodePrivateKey,
+                PublicKey = registration.VirtualNodePublicKey
+            };
+
+            memoryCache.Set(GetGatewayVirtualDeviceCacheKey(gatewayId), virtualDevice, TimeSpan.FromMinutes(10));
+
+            return virtualDevice;
         }
 
         public async Task<IRecipient> GetRecipientForChatRequest(DeviceOrChannelRequestCode request)

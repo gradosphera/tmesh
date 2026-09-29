@@ -63,7 +63,7 @@ namespace TBot.Bot
                     ChannelId = session.ChannelId,
                     PublicChannelId = session.PublicChannelId,
                     ForceGatewayId = session.ForceGatewayId,
-                    ImpersonateDeviceId = session.ImpersonateDeviceId
+                    ImpersonateGatewayId = session.ImpersonateDeviceId
                 };
                 StoreChatSessionInCache(session.ChatId, id);
                 session.ExpirationDate = now.Add(ChatSessionTtl);
@@ -396,7 +396,7 @@ namespace TBot.Bot
             chatSession.DeviceId = id.DeviceId;
             chatSession.ChannelId = id.ChannelId;
             chatSession.PublicChannelId = id.PublicChannelId;
-            chatSession.ImpersonateDeviceId = id.ImpersonateDeviceId;
+            chatSession.ImpersonateDeviceId = id.ImpersonateGatewayId;
             chatSession.ForceGatewayId = id.ForceGatewayId;
             await db.SaveChangesAsync();
         }

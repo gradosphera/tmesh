@@ -1,20 +1,11 @@
-﻿using Google.Protobuf;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using TBot.Database;
 using TBot.Database.Models;
 using TBot.Helpers;
 using TBot.Models;
-using TBot.Models.MeshMessages;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace TBot.Bot
 {
@@ -32,26 +23,36 @@ namespace TBot.Bot
         public async ValueTask AddPublicChannelMeshMessageToTgChats(
             IEnumerable<long> tgChatIds,
             long meshMsgId,
-            long deviceId,
             PublicChannel channel,
             string messageText,
             long? replyToMeshMsgId = null,
-            MeshtasticMessageStatus status = null)
+            MeshtasticMessageStatus status = null,
+            long? deviceId = null,
+            VirtualGatewayDevice impersonateDevice = null)
         {
             if (string.IsNullOrWhiteSpace(messageText))
             {
                 return;
             }
             string deviceName;
-            if (deviceId == _options.MeshtasticNodeId)
+            if (impersonateDevice != null)
+            {
+                deviceName = impersonateDevice.Name;
+            }
+            else if (deviceId == _options.MeshtasticNodeId)
             {
                 deviceName = _options.MeshtasticNodeNameLong;
             }
+            else if (deviceId.HasValue)
+            {
+                var device = await registrationService.GetDeviceAsync(deviceId.Value);
+                deviceName = device != null ? device.NodeName : MeshtasticService.GetMeshtasticNodeHexId(deviceId.Value);
+            }
             else
             {
-                var device = await registrationService.GetDeviceAsync(deviceId);
-                deviceName = device != null ? device.NodeName : MeshtasticService.GetMeshtasticNodeHexId(deviceId);
+                deviceName = "Unknown Device";
             }
+
             var colorSymbol = StringHelper.ColorSymbols[HashHelper.ColorIndexFromDeviceId((uint)deviceId, StringHelper.ColorSymbols.Length)];
 
             MeshtasticMessageStatus replyToStatus = null;

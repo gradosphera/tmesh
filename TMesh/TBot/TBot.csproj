@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    <DockerfileContext>..\..</DockerfileContext>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,7 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Meshtastic" Version="2.0.8" />
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.24.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.11" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.11">
       <PrivateAssets>all</PrivateAssets>
@@ -34,6 +35,7 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL.NetTopologySuite" Version="9.0.4" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL.NodaTime" Version="9.0.4" />
     <PackageReference Include="Otp.NET" Version="1.4.1" />
+    <PackageReference Include="System.IO.Hashing" Version="10.0.12" />
     <PackageReference Include="Telegram.Bot" Version="22.7.6" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.1" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.1" />
@@ -53,6 +55,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\meshtastic-c-sharp\Meshtastic\Meshtastic.csproj" />
     <ProjectReference Include="..\Shared\Shared.csproj" />
   </ItemGroup>
 

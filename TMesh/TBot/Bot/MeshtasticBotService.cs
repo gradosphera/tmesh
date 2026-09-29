@@ -244,10 +244,10 @@ namespace TBot.Bot
             await tgSender.AddPublicChannelMeshMessageToTgChats(
                        activeChatIds,
                        meshMsg.Id,
-                       meshMsg.DeviceId,
                        channel,
                        text,
-                       meshMsg.ReplyTo != 0 ? meshMsg.ReplyTo : (long?)null,
+                       meshMsg.ReplyTo != 0 ? meshMsg.ReplyTo : null,
+                       deviceId: meshMsg.DeviceId,
                        status: null);
         }
 

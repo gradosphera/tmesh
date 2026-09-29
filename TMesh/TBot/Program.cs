@@ -68,6 +68,7 @@ namespace TBot
                     services.AddSingleton<MqttService>();
                     services.AddSingleton<MapMqttService>();
                     services.AddSingleton<SimpleScheduler>();
+                    services.AddSingleton<SQLiteBackupService>();
                     services.AddKeyedSingleton<ConcurrentDictionary<long, DateTime>>("GatewaysLastSeen");
                     services.AddHostedService<MessageLoopService>();
                     TgBotService.Register(services);
@@ -92,6 +93,11 @@ namespace TBot
                 await UpdateDb(host);
                 return;
             }
+            else if (args.Any(a => string.Equals(a, "/getnodeid", StringComparison.OrdinalIgnoreCase)))
+            {
+                GetNodeId(host);
+                return;
+            }
             else if (args.Any(a => string.Equals(a, "/clear_database", StringComparison.OrdinalIgnoreCase)))
             {
                 await DeleteAllDataInDb(host);
@@ -102,13 +108,14 @@ namespace TBot
                 GenerateKeys(host);
                 Console.ReadLine();
                 return;
-            } else if (args.Any(a => string.Equals(a, "/passwordgen", StringComparison.OrdinalIgnoreCase)))
+            }
+            else if (args.Any(a => string.Equals(a, "/passwordgen", StringComparison.OrdinalIgnoreCase)))
             {
                 //get next arg as username
                 var username = args.SkipWhile(a => !string.Equals(a, "/passwordgen", StringComparison.OrdinalIgnoreCase)).Skip(1).FirstOrDefault();
                 if (username == null)
                 {
-                     var logger = host.Services.GetRequiredService<ILogger<Program>>();
+                    var logger = host.Services.GetRequiredService<ILogger<Program>>();
                     logger.LogError("Missing username argument for /passwordgen.");
                     return;
                 }
@@ -162,6 +169,24 @@ namespace TBot
             return; // exit after install
         }
 
+        private static void GetNodeId(IHost host)
+        {
+            var logger = host.Services.GetRequiredService<ILogger<Program>>();
+            var options = host.Services.GetRequiredService<IOptions<TBotOptions>>().Value;
+            if (string.IsNullOrWhiteSpace(options.MeshtasticPublicKeyBase64))
+            {
+                logger.LogError("Missing MeshtasticPublicKeyBase64 in configuration. Aborting /getnodeid.");
+                return; // exit non-zero? keep zero for simplicity
+            }
+            var nodeId = HashHelper.GetCRC32(Convert.FromBase64String(options.MeshtasticPublicKeyBase64));
+            logger.LogInformation("Meshtastic Node ID that match public key: {NodeId} {NodeIdHex}", nodeId, MeshtasticService.GetMeshtasticNodeHexId(nodeId));
+            logger.LogInformation("Meshtastic Node ID currently in settings: {NodeId} {NodeIdHex}", options.MeshtasticNodeId, MeshtasticService.GetMeshtasticNodeHexId(options.MeshtasticNodeId));
+            if (nodeId != options.MeshtasticNodeId)
+            {
+                logger.LogWarning("WARNING: The Node ID derived from the public key does not match the Node ID in settings. Please check your configuration.");
+            }
+        }
+
         private static async Task UpdateDb(IHost host)
         {
             var logger = host.Services.GetRequiredService<ILogger<Program>>();
@@ -173,6 +198,10 @@ namespace TBot
                     logger.LogError("Missing SQLiteConnectionString in configuration. Aborting /updatedb.");
                     return; // exit non-zero? keep zero for simplicity
                 }
+
+                var backupService = host.Services.GetRequiredService<SQLiteBackupService>();
+                await backupService.BackupAsync();
+
                 var regService = host.Services.GetRequiredService<RegistrationService>();
                 await regService.EnsureMigratedAsync();
                 logger.LogInformation("Database update completed successfully.");
@@ -244,7 +273,7 @@ namespace TBot
             try
             {
                 var service = host.Services.GetRequiredService<MeshtasticService>();
-                var (publicKeyBase64, privateKeyBase64) = MeshtasticService.GenerateKeyPair();
+                var (publicKeyBase64, privateKeyBase64) = MeshtasticService.GenerateKeyPairBase64();
                 logger.LogInformation("Generated Key Pair:");
                 logger.LogInformation("PublicKey=[{PublicKey}]", publicKeyBase64);
                 logger.LogInformation("PrivateKey=[{PrivateKey}]", privateKeyBase64);

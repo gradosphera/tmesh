@@ -276,17 +276,17 @@ namespace TBot.Bot
                         var publicChannel = await registrationService.GetPublicChannelByIdCachedAsync(chatSession.PublicChannelId.Value);
                         var networkName = networks.GetValueOrDefault(publicChannel.NetworkId)?.Name ?? "Unknown";
                         var fromDeviceName = StringHelper.EscapeMdV2($"{_options.MeshtasticNodeNameLong} ({MeshtasticService.GetMeshtasticNodeHexId(_options.MeshtasticNodeId)})");
-                        if (chatSession.ImpersonateDeviceId.HasValue)
+                        if (chatSession.ImpersonateGatewayId.HasValue)
                         {
-                            var device = await registrationService.GetDeviceAsync(chatSession.ImpersonateDeviceId.Value);
-                            var hexId = MeshtasticService.GetMeshtasticNodeHexId(chatSession.ImpersonateDeviceId.Value);
-                            if (device != null)
+                            var virtualDevice = await registrationService.GetGatewayVirtualDevice(chatSession.ImpersonateGatewayId.Value);
+                            if (virtualDevice != null)
                             {
-                                fromDeviceName = StringHelper.EscapeMdV2($"{device.NodeName} ({hexId})");
+                                var hexId = MeshtasticService.GetMeshtasticNodeHexId(virtualDevice.Id);
+                                fromDeviceName = StringHelper.EscapeMdV2($"{virtualDevice.Name} ({hexId})");
                             }
                             else
                             {
-                                fromDeviceName = StringHelper.EscapeMdV2($"Unknown device ({hexId})");
+                                fromDeviceName = StringHelper.EscapeMdV2($"(Unavailable virtual device)");
                             }
                         }
 
@@ -347,7 +347,7 @@ namespace TBot.Bot
                                 if (gatewayInfo != null)
                                 {
                                     var lastSeen = gatewaysLastSeen.TryGetValue(gatewayInfo.DeviceId, out var lastSeenValue)
-                                        ? lastSeenValue 
+                                        ? lastSeenValue
                                         : gatewayInfo.LastSeen;
 
                                     var sb = new StringBuilder(" 📡 \\[Gateway");
@@ -2282,21 +2282,20 @@ namespace TBot.Bot
 
             if (string.IsNullOrWhiteSpace(arg)
                 || segments == null
-                || segments.Length != 3)
+                || segments.Length != 2)
             {
                 await botClient.SendMessage(chatId,
-                    "Please provide a channel name, your gateway id, your node id to start a chat with public channel.\n" +
-                    "Syntax: /chat_public_channel <channel_name> <gateway_id> <node_id>\n" +
+                    "Please provide a channel name and your gateway id to start a chat with public channel.\n" +
+                    "Syntax: /chat_public_channel <channel_name> <gateway_id>\n" +
                     "Examples:\n" +
-                    "• /chat_public_channel MediumFast !aa001122 !bb223344\n" +
-                    "Where 'MediumFast' name is Meshtastic public channel name, !aa001122 is your gateway id, !bb223344 is your node id.\n" +
-                    "Your are only allowed to use gateway and node IDs that you own.");
+                    "• /chat_public_channel MediumFast !aa001122\n" +
+                    "Where 'MediumFast' name is Meshtastic public channel name, !aa001122 is your gateway id.\n" +
+                    "Your are only allowed to use gateway IDs that you own.");
                 return TgResult.Ok;
             }
 
             var channelName = segments[0];
             var gatewayIdText = segments[1];
-            var nodeIdText = segments[2];
 
             if (!MeshtasticService.TryParseDeviceId(gatewayIdText, out var gatewayId))
             {
@@ -2305,24 +2304,10 @@ namespace TBot.Bot
                 return TgResult.Ok;
             }
 
-            if (!MeshtasticService.TryParseDeviceId(nodeIdText, out var nodeId))
-            {
-                await botClient.SendMessage(chatId,
-                    $"Invalid node ID format: '{nodeIdText}'. The node ID can be decimal or hex (hex starts with ! or #).");
-                return TgResult.Ok;
-            }
-
             if (!await registrationService.HasDeviceRegistrationAsync(chatId, gatewayId))
             {
                 await botClient.SendMessage(chatId,
                     $"You don't have a registered gateway with ID {MeshtasticService.GetMeshtasticNodeHexId(gatewayId)} in this chat. Please register your gateway device first with /add_device and /promote_to_gateway commands.");
-                return TgResult.Ok;
-            }
-
-            if (!await registrationService.HasDeviceRegistrationAsync(chatId, nodeId))
-            {
-                await botClient.SendMessage(chatId,
-                    $"You don't have a registered node with ID {MeshtasticService.GetMeshtasticNodeHexId(nodeId)} in this chat. Please register your node device first with /add_device command.");
                 return TgResult.Ok;
             }
 
@@ -2335,27 +2320,12 @@ namespace TBot.Bot
                 return TgResult.Ok;
             }
 
-            var device = await registrationService.GetDeviceAsync(nodeId);
-            if (device == null)
-            {
-                await botClient.SendMessage(chatId,
-                    $"Node device with ID {MeshtasticService.GetMeshtasticNodeHexId(nodeId)} is not known to TMesh. The device needs to broadcast its Node info or send it directly to {_options.MeshtasticNodeNameLong} node using \"Exchange user information\".");
-                return TgResult.Ok;
-            }
-
             var gateways = await registrationService.GetGatewaysCached();
 
             if (!gateways.ContainsKey(gateway.DeviceId))
             {
                 await botClient.SendMessage(chatId,
                     $"Device with ID {MeshtasticService.GetMeshtasticNodeHexId(gatewayId)} is not a registered gateway. Please promote your device to gateway first with /promote_to_gateway command.");
-                return TgResult.Ok;
-            }
-
-            if (gateway.DeviceId == device.DeviceId)
-            {
-                await botClient.SendMessage(chatId,
-                    $"The gateway device and the node device cannot be the same. Please select a different gateway or node.");
                 return TgResult.Ok;
             }
 
@@ -2370,14 +2340,24 @@ namespace TBot.Bot
                 return TgResult.Ok;
             }
 
+            var virtualDevice = await registrationService.GetGatewayVirtualDevice(gatewayId);
+            if (virtualDevice?.PrivateKey == null)
+            {
+                await botClient.SendMessage(chatId,
+                    $"Gateway device with ID {MeshtasticService.GetMeshtasticNodeHexId(gatewayId)} does not have a virtual device registered. Please remove and add the gateway to fix.");
+                return TgResult.Ok;
+            }
+
             await botCache.StartChatSession(chatId, new DeviceOrChannelId
             {
                 PublicChannelId = publicChannel.Id,
-                ImpersonateDeviceId = device.DeviceId,
+                ImpersonateGatewayId = gateway.DeviceId,
                 ForceGatewayId = gateway.DeviceId
             }, db);
 
-            var fromName = $"{device.NodeName} ({MeshtasticService.GetMeshtasticNodeHexId(device.DeviceId)})";
+            var primaryChannel = await registrationService.GetNetworkPrimaryChannelCached(gateway.NetworkId);
+            meshtasticService.SendVirtualNodeInfo(virtualDevice, primaryChannel.Name, primaryChannel, int.MaxValue);
+            var fromName = $"{virtualDevice.Name} ({MeshtasticService.GetMeshtasticNodeHexId(virtualDevice.Id)})";
             var gatewayName = $"{gateway.NodeName} ({MeshtasticService.GetMeshtasticNodeHexId(gateway.DeviceId)})";
             await botClient.SendMessage(chatId, $"You are now chatting in channel '{publicChannel.Name}'. From device - {fromName} via gateway - {gatewayName}");
             return TgResult.Ok;

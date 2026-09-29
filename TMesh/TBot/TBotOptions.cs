@@ -41,6 +41,7 @@ public class TBotOptions
 
     public int TelegramBotMaxConnections { get; set; }
     public string SQLiteConnectionString { get; set; }
+    public AzureBlobBackupOptions AzureBlobBackup { get; set; }
     public string AnalyticsPostgresConnectionString { get; set; }
     public int OutgoingMessageHopLimit { get; set; }
     public int OwnNodeInfoMessageHopLimit { get; set; }
@@ -55,6 +56,8 @@ public class TBotOptions
     //public ChannelInfo[] MeshtasticSecondayChannels { get; set; }
     public string MeshtasticPublicKeyBase64 { get; set; }
     public string MeshtasticPrivateKeyBase64 { get; set; }
+
+    public bool EnableBroadcastSigning { get; set; }
 
     public int MeshtasticMaxOutgoingMessagesPerMinute { get; set; }
 
@@ -107,6 +110,19 @@ public enum UplinkMode
     MqttNotOkAndUnknownExceptPosition,
     MqttNotOkOnly,
     MqttNotOkOnlyExceptPosition
+}
+
+public class AzureBlobBackupOptions
+{
+    public string ConnectionString { get; set; }
+    public AzureBlobBackupPathOptions BackupPath { get; set; }
+    public int SkipIfBlobUpdatedLessThanHours { get; set; }
+}
+
+public class AzureBlobBackupPathOptions
+{
+    public string ContainerName { get; set; }
+    public string BlobPath { get; set; }
 }
 
 public class MapMqttServerOptions

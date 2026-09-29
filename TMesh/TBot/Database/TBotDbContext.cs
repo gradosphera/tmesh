@@ -83,6 +83,9 @@ public class TBotDbContext(DbContextOptions<TBotDbContext> options) : DbContext(
                 .IsRequired();
             e.Property(p => p.LastSeenUtc);
             e.HasIndex(p => p.NetworkId);
+            e.Property(p => p.VirtualNodeId)
+                .IsRequired()
+                .HasDefaultValue(0);
         });
 
         modelBuilder.Entity<Channel>(e =>

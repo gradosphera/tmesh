@@ -1,0 +1,4 @@
+[submodule "meshtastic-c-sharp"]
+	path = meshtastic-c-sharp
+	url = https://github.com/samfromlv/meshtastic-c-sharp.git
+	branch = master
