@@ -68,6 +68,7 @@ namespace TBot
                     services.AddSingleton<MqttService>();
                     services.AddSingleton<MapMqttService>();
                     services.AddSingleton<SimpleScheduler>();
+                    services.AddSingleton<SQLiteBackupService>();
                     services.AddKeyedSingleton<ConcurrentDictionary<long, DateTime>>("GatewaysLastSeen");
                     services.AddHostedService<MessageLoopService>();
                     TgBotService.Register(services);
@@ -197,6 +198,10 @@ namespace TBot
                     logger.LogError("Missing SQLiteConnectionString in configuration. Aborting /updatedb.");
                     return; // exit non-zero? keep zero for simplicity
                 }
+
+                var backupService = host.Services.GetRequiredService<SQLiteBackupService>();
+                await backupService.BackupAsync();
+
                 var regService = host.Services.GetRequiredService<RegistrationService>();
                 await regService.EnsureMigratedAsync();
                 logger.LogInformation("Database update completed successfully.");

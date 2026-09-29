@@ -32,9 +32,9 @@ namespace TBot
         {
             try
             {
+                var pendingMigrations = await db.Database.GetPendingMigrationsAsync();
                 await db.Database.MigrateAsync();
-                var appliedMigrations = await db.Database.GetAppliedMigrationsAsync();
-                if (appliedMigrations.Contains(VirtualNodesMigrationId, StringComparer.Ordinal))
+                if (pendingMigrations.Contains(VirtualNodesMigrationId, StringComparer.Ordinal))
                 {
                     await BackfillGatewayVirtualNodesAsync();
                 }

@@ -41,6 +41,7 @@ public class TBotOptions
 
     public int TelegramBotMaxConnections { get; set; }
     public string SQLiteConnectionString { get; set; }
+    public AzureBlobBackupOptions AzureBlobBackup { get; set; }
     public string AnalyticsPostgresConnectionString { get; set; }
     public int OutgoingMessageHopLimit { get; set; }
     public int OwnNodeInfoMessageHopLimit { get; set; }
@@ -109,6 +110,18 @@ public enum UplinkMode
     MqttNotOkAndUnknownExceptPosition,
     MqttNotOkOnly,
     MqttNotOkOnlyExceptPosition
+}
+
+public class AzureBlobBackupOptions
+{
+    public string ConnectionString { get; set; }
+    public AzureBlobBackupPathOptions BackupPath { get; set; }
+}
+
+public class AzureBlobBackupPathOptions
+{
+    public string ContainerName { get; set; }
+    public string BlobPath { get; set; }
 }
 
 public class MapMqttServerOptions
