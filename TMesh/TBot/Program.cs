@@ -268,7 +268,7 @@ namespace TBot
             try
             {
                 var service = host.Services.GetRequiredService<MeshtasticService>();
-                var (publicKeyBase64, privateKeyBase64) = MeshtasticService.GenerateKeyPair();
+                var (publicKeyBase64, privateKeyBase64) = MeshtasticService.GenerateKeyPairBase64();
                 logger.LogInformation("Generated Key Pair:");
                 logger.LogInformation("PublicKey=[{PublicKey}]", publicKeyBase64);
                 logger.LogInformation("PrivateKey=[{PrivateKey}]", privateKeyBase64);

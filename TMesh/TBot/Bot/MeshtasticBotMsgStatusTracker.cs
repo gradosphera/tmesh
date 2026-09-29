@@ -43,7 +43,7 @@ namespace TBot.Bot
            int tgMessageId,
            int? replyToTelegramMsgId,
            string text,
-           long? impersonateDeviceId = null,
+           VirtualGatewayDevice impersonateDevice = null,
            long? forceRelayGatewayId = null)
         {
             var networkId = recipients.First().NetworkId;
@@ -140,7 +140,7 @@ namespace TBot.Bot
                             recipient: recipient,
                             publicChannelName: (recipient as PublicChannel)?.Name ?? MeshtasticService.UnknownChannelName,
                             replyToMessageId: replyToMeshMessageId,
-                            impersonateDeviceId: impersonateDeviceId);
+                            impersonateDevice: impersonateDevice);
                 }
                 else
                 {
@@ -479,7 +479,7 @@ namespace TBot.Bot
            long chatId,
            int replyToTelegramMsgId,
            string emojis,
-           long? impersonateDeviceId = null,
+           VirtualGatewayDevice impersonateDevice = null,
            long? forceRelayGatewayId = null)
         {
             var telMsgStatus = botCache.GetTelegramMessageStatus(chatId, replyToTelegramMsgId);
@@ -551,7 +551,7 @@ namespace TBot.Bot
                             publicChannelName: (recipient as PublicChannel)?.Name ?? MeshtasticService.UnknownChannelName,
                             replyToMessageId: replyToMeshMessageId,
                             isEmoji: true,
-                            impersonateDeviceId: impersonateDeviceId);
+                            impersonateDevice: impersonateDevice);
                 }
                 else
                 {

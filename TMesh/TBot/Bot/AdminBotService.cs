@@ -1175,7 +1175,7 @@ namespace TBot.Bot
             var publicChannelIdStr = cmd.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty;
             if (string.IsNullOrEmpty(publicChannelIdStr))
             {
-                await botClient.SendMessage(chatId, "Usage: chat <publicChannelId> [fromDeviceId=\"<fromDeviceId>\"] [fromGatewayId=\"<fromGatewayId>\"]\nPlease specify the public channel ID.");
+                await botClient.SendMessage(chatId, "Usage: chat <publicChannelId> [impersGatewayId=\"<impersGatewayId>\"] [fromGatewayId=\"<fromGatewayId>\"]\nPlease specify the public channel ID.");
                 return TgResult.Ok;
             }
 
@@ -1194,22 +1194,31 @@ namespace TBot.Bot
 
             var remainingCmd = cmd[(publicChannelIdStr.Length)..].Trim();
 
-            var fromDeviceIdStr = remainingCmd.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                .FirstOrDefault(s => s.StartsWith("fromDeviceId=", StringComparison.OrdinalIgnoreCase))?
+            var impersGatewayIdStr = remainingCmd.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault(s => s.StartsWith("impersGatewayId=", StringComparison.OrdinalIgnoreCase))?
                 .Split('=', 2)[1]
                 .Trim('"');
 
-            long? fromDeviceId = null;
+            long? imperGatewayId = null;
+            VirtualGatewayDevice virtualDevice = null;
 
-            if (!string.IsNullOrWhiteSpace(fromDeviceIdStr))
+            if (!string.IsNullOrWhiteSpace(impersGatewayIdStr))
             {
-                if (!MeshtasticService.TryParseDeviceId(fromDeviceIdStr, out var id))
+                if (!MeshtasticService.TryParseDeviceId(impersGatewayIdStr, out var id))
                 {
-                    await botClient.SendMessage(chatId, $"Invalid fromDeviceId format: '{fromDeviceIdStr}'. The device ID can be decimal or hex (hex starts with ! or #).");
+                    await botClient.SendMessage(chatId, $"Invalid impersGatewayId format: '{impersGatewayIdStr}'. The device ID can be decimal or hex (hex starts with ! or #).");
                     return TgResult.Ok;
                 }
-                fromDeviceId = id;
+                imperGatewayId = id;
+
+                virtualDevice = await registrationService.GetGatewayVirtualDevice(id);
+                if (virtualDevice == null)
+                {
+                    await botClient.SendMessage(chatId, $"Gateway with ID {id} not found. Make sure the gateway is registered before using it in chat.");
+                    return TgResult.Ok;
+                }
             }
+
 
             var fromGatewayIdStr = remainingCmd.Split(' ', StringSplitOptions.RemoveEmptyEntries)
                 .FirstOrDefault(s => s.StartsWith("fromGatewayId=", StringComparison.OrdinalIgnoreCase))?
@@ -1246,22 +1255,26 @@ namespace TBot.Bot
             await botCache.StartChatSession(chatId, new Models.ChatSession.DeviceOrChannelId
             {
                 PublicChannelId = publicChannelId,
-                ImpersonateDeviceId = fromDeviceId,
+                ImpersonateGatewayId = imperGatewayId,
                 ForceGatewayId = fromGatewayId
             }, db);
 
-            var fromName = $"{_options.MeshtasticNodeNameLong} ({MeshtasticService.GetMeshtasticNodeHexId(_options.MeshtasticNodeId)})";
-            if (fromDeviceId.HasValue)
+            if (imperGatewayId.HasValue)
             {
-                var device = await registrationService.GetDeviceAsync(fromDeviceId.Value);
+                var primaryChannel = await registrationService.GetNetworkPrimaryChannelCached(publicChannel.NetworkId);
+                meshtasticService.SendVirtualNodeInfo(virtualDevice, primaryChannel.Name, primaryChannel, int.MaxValue);
+            }
 
-                if (device != null)
+            var fromName = $"{_options.MeshtasticNodeNameLong} ({MeshtasticService.GetMeshtasticNodeHexId(_options.MeshtasticNodeId)})";
+            if (imperGatewayId.HasValue)
+            {
+                if (virtualDevice != null)
                 {
-                    fromName = $"{device.NodeName} ({MeshtasticService.GetMeshtasticNodeHexId(device.DeviceId)})";
+                    fromName = $"{virtualDevice.Name} ({MeshtasticService.GetMeshtasticNodeHexId(virtualDevice.Id)})";
                 }
                 else
                 {
-                    fromName = $"Unknown node - {MeshtasticService.GetMeshtasticNodeHexId(fromDeviceId.Value)}";
+                    fromName = $"Unknown node - {MeshtasticService.GetMeshtasticNodeHexId(imperGatewayId.Value)}";
                 }
             }
 
@@ -1332,6 +1345,11 @@ namespace TBot.Bot
             var newMsgId = MeshtasticService.GetNextMeshtasticMessageId();
             botCache.StoreMessageSentByOurNode(newMsgId);
 
+            var impersonateDevice = new VirtualGatewayDevice
+            {
+                Id = fromNodeId,
+            };
+
             var envelope = meshtasticService.PackPublicTextMessage(
                 newMsgId,
                 announcement,
@@ -1339,7 +1357,7 @@ namespace TBot.Bot
                 hopLimit: _options.OutgoingMessageHopLimit,
                 recipient: publicChannel,
                 channelName: publicChannel.Name,
-                fromNodeId: fromNodeId);
+                fromNode: impersonateDevice);
 
             envelope.Packet.RxSnr = 1;
             envelope.Packet.RxRssi = -30;

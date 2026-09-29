@@ -9,11 +9,12 @@ WORKDIR /tbot
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY ["TBot/TBot.csproj", "TBot/"]
-COPY ["Shared/Shared.csproj", "Shared/"]
-RUN dotnet restore "./TBot/TBot.csproj"
+COPY ["TMesh/TBot/TBot.csproj", "TMesh/TBot/"]
+COPY ["TMesh/Shared/Shared.csproj", "TMesh/Shared/"]
+COPY ["meshtastic-c-sharp/Meshtastic/Meshtastic.csproj", "meshtastic-c-sharp/Meshtastic/"]
+RUN dotnet restore "./TMesh/TBot/TBot.csproj"
 COPY . .
-WORKDIR "/src/TBot"
+WORKDIR "/src/TMesh/TBot"
 RUN dotnet build "./TBot.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 # This stage is used to publish the service project to be copied to the final stage

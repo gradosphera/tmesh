@@ -93,7 +93,7 @@ namespace TBot
             IRecipient recipient,
             bool isEmoji = false,
             long? replyToMessageId = null,
-            long? impersonateDeviceId = null)
+            VirtualGatewayDevice impersonateDevice = null)
         {
             var envelope = PackPublicTextMessage(
                 newMessageId,
@@ -103,7 +103,7 @@ namespace TBot
                 recipient,
                 publicChannelName,
                 isEmoji,
-                fromNodeId: impersonateDeviceId);
+                fromNode: impersonateDevice);
 
             AddStat(new MeshStat
             {
@@ -496,7 +496,7 @@ namespace TBot
             IRecipient recipient,
             string channelName,
             bool isEmoji = false,
-            long? fromNodeId = null)
+            VirtualGatewayDevice fromNode = null)
         {
             var packet = CreateTextMessagePacket(
                 newMessageId,
@@ -506,10 +506,10 @@ namespace TBot
                 replyToMessageId,
                 hopLimit,
                 isEmoji,
-                fromNodeId);
+                fromNode);
 
-            packet = EncryptPacketWithPsk(packet, recipient);
-            var envelope = CreateMeshtasticEnvelope(packet, channelName, fromNodeId);
+            packet = EncryptPacketWithPsk(packet, recipient, fromNode?.PrivateKey);
+            var envelope = CreateMeshtasticEnvelope(packet, channelName, fromNode?.Id);
             return envelope;
         }
 
@@ -589,12 +589,12 @@ namespace TBot
         private MeshPacket CreateTextMessagePacket(
             long newMessageId,
             long deviceId,
-            byte[] publicKey,
+            byte[] recipientPkiPublicKey,
             string text,
             long? replyToMessageId,
             int hopLimit,
             bool isEmoji,
-            long? fromNodeId = null)
+            VirtualGatewayDevice fromNode = null)
         {
             var bytes = ByteString.CopyFromUtf8(text);
             if (bytes.Length > MaxTextMessageBytes)
@@ -603,8 +603,8 @@ namespace TBot
             var hopLimitToUse = Math.Max(Math.Min(hopLimit, _options.OutgoingMessageHopLimit), 0);
 
             //last byte of node id
-            var relayNode = fromNodeId.HasValue
-                ? (uint)(fromNodeId.Value & 0xFF)
+            var relayNode = fromNode != null
+                ? (uint)(fromNode.Id & 0xFF)
                 : (uint)(_options.MeshtasticNodeId & 0xFF);
 
             var packet = new MeshPacket()
@@ -613,7 +613,7 @@ namespace TBot
                 WantAck = true,
                 RelayNode = relayNode,
                 To = (uint)deviceId,
-                From = (uint)(fromNodeId ?? _options.MeshtasticNodeId),
+                From = (uint)(fromNode != null ? fromNode.Id : _options.MeshtasticNodeId),
                 Priority = MeshPacket.Types.Priority.Default,
                 Id = (uint)newMessageId,
                 HopLimit = (uint)hopLimitToUse,
@@ -628,11 +628,11 @@ namespace TBot
                 },
             };
 
-            if (publicKey != null && publicKey.Length > 0)
+            if (recipientPkiPublicKey != null && recipientPkiPublicKey.Length > 0)
             {
                 Meshtastic.Crypto.PKIEncryption.Encrypt(
-                    _privateKey,
-                    publicKey,
+                    fromNode?.PrivateKey ?? _privateKey,
+                    recipientPkiPublicKey,
                     packet
                 );
 
@@ -895,10 +895,15 @@ namespace TBot
                    System.Globalization.NumberStyles.HexNumber,
                    null);
 
-        public static (string publicKeyBase64, string privateKeyBase64) GenerateKeyPair()
+        public static (string publicKeyBase64, string privateKeyBase64) GenerateKeyPairBase64()
         {
-            var (privateKey, publicKey) = Meshtastic.Crypto.PKIEncryption.GenerateKeyPair();
+            var (privateKey, publicKey) = GenerateKeyPair();
             return (Convert.ToBase64String(publicKey), Convert.ToBase64String(privateKey));
+        }
+
+        public static (byte[] publicKey, byte[] privateKey) GenerateKeyPair()
+        {
+            return Meshtastic.Crypto.PKIEncryption.GenerateKeyPair();
         }
 
         public static bool CanSendMessage(string text)
@@ -915,6 +920,27 @@ namespace TBot
             long? relayThroughGatewayId = null)
         {
             var packet = CreateTMeshVirtualNodeInfo(primaryChannel, hopLimit, destinationDeviceId);
+            var envelope = CreateMeshtasticEnvelope(packet, primaryChannelName);
+            var id = envelope.Packet.Id;
+            StoreNoDup(id);
+            QueueMessage(
+                envelope,
+                primaryChannel.NetworkId,
+                destinationDeviceId == BroadcastDeviceId
+                    ? MessagePriority.Normal
+                    : MessagePriority.High,
+                relayThroughGatewayId);
+        }
+
+        public void SendVirtualNodeInfo(
+           VirtualGatewayDevice device,
+           string primaryChannelName,
+           IRecipient primaryChannel,
+           int hopLimit,
+           long destinationDeviceId = BroadcastDeviceId,
+           long? relayThroughGatewayId = null)
+        {
+            var packet = CreateGatewayVirtualNodeInfo(device, primaryChannel, hopLimit, destinationDeviceId);
             var envelope = CreateMeshtasticEnvelope(packet, primaryChannelName);
             var id = envelope.Packet.Id;
             StoreNoDup(id);
@@ -1071,20 +1097,75 @@ namespace TBot
             return packet;
         }
 
-        private MeshPacket EncryptPacketWithPsk(MeshPacket packet, IRecipient channel)
+
+        private MeshPacket CreateGatewayVirtualNodeInfo(
+           VirtualGatewayDevice device,
+           IRecipient primaryChannel,
+           int hopLimit,
+           long destinationDeviceId = BroadcastDeviceId)
         {
-            return EncryptPacketWithPsk(packet, channel.RecipientChannelXor.Value, channel.RecipientKey);
+            hopLimit = Math.Max(Math.Min(hopLimit, _options.OwnNodeInfoMessageHopLimit), 0);
+
+            var packet = new MeshPacket()
+            {
+                Channel = 0,
+                WantAck = false,
+                To = (uint)destinationDeviceId,
+                From = (uint)device.Id,
+                RelayNode = (uint)(device.Id & 0xFF),
+                Priority = MeshPacket.Types.Priority.Default,
+                Id = GenerateNewMessageId(),
+                HopLimit = (uint)hopLimit,
+                HopStart = (uint)hopLimit,
+                Decoded = new Data()
+                {
+                    Bitfield = OkToMqttMask,
+                    Portnum = PortNum.NodeinfoApp,
+                    Payload = new User
+                    {
+                        HwModel = HardwareModel.DiyV1,
+                        Id = GetMeshtasticNodeHexId(device.Id),
+                        IsLicensed = false,
+                        LongName = device.Name,
+                        IsUnmessagable = false, // Field name from external library kept as-is.
+                        ShortName = device.ShortName,
+                        Role = Config.Types.DeviceConfig.Types.Role.ClientHidden,
+                        PublicKey = ByteString.CopyFrom(device.PublicKey)
+                    }.ToByteString(),
+                },
+            };
+
+            packet = EncryptPacketWithPsk(packet, primaryChannel, device.PrivateKey);
+            return packet;
         }
 
-        private MeshPacket EncryptPacketWithPsk(MeshPacket packet, byte channelXorHash, byte[] channelPsk)
+        private MeshPacket EncryptPacketWithPsk(MeshPacket packet, IRecipient channel,
+            byte[] devicePrivateKey = null)
+        {
+            return EncryptPacketWithPsk(packet, channel.RecipientChannelXor.Value, channel.RecipientKey, devicePrivateKey);
+        }
+
+        private MeshPacket EncryptPacketWithPsk(
+            MeshPacket packet,
+            byte channelXorHash,
+            byte[] channelPsk,
+            byte[] devicePrivateKey = null)
         {
             if (_options.EnableBroadcastSigning
-                && packet.From == _options.MeshtasticNodeId
                 && packet.To == BroadcastDeviceId
+                && (devicePrivateKey != null || packet.From == _options.MeshtasticNodeId)
                 && XEdDSASigning.CanSignPacket(packet))
             {
-                XEdDSASigning.AddPacketSignature(_edsaPrivateKey, _edsaPublicKey, packet);
-                packet.XeddsaSigned = true;
+                if (packet.From == _options.MeshtasticNodeId)
+                {
+                    XEdDSASigning.AddPacketSignature(_edsaPrivateKey, _edsaPublicKey, packet);
+                    packet.XeddsaSigned = true;
+                }
+                else if (devicePrivateKey != null)
+                {
+                    XEdDSASigning.AddPacketSignature(devicePrivateKey, packet);
+                    packet.XeddsaSigned = true;
+                }
             }
 
             var input = packet.Decoded.ToByteArray();

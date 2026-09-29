@@ -12,7 +12,7 @@ namespace TBot.Models.ChatSession
         public int? ChannelId { get; set; }
         public int? PublicChannelId { get; set; }
 
-        public long? ImpersonateDeviceId { get; set; }
+        public long? ImpersonateGatewayId { get; set; }
         public long? ForceGatewayId { get; set; }
         public DateTime LastRefreshed { get; set; }
     }

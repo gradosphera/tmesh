@@ -76,7 +76,7 @@ namespace TBot.Bot
                  new BotCommand
                 {
                     Command = "chat_public_channel",
-                    Description = $"Start a chat session with a Meshtastic public channel. e.g., /chat_public_channel MediumFast <yourGatewayId> <yourOtherNodeId> (e.g., /chat_public_channel MediumFast !aabbcc11 !11223344)."
+                    Description = $"Start a chat session with a Meshtastic public channel. e.g., /chat_public_channel MediumFast <yourGatewayId>  (e.g., /chat_public_channel MediumFast !aabbcc11)."
                 },
                 new BotCommand
                 {
@@ -197,12 +197,22 @@ namespace TBot.Bot
                     : $"{trimmedUserName}{emojis}";
 
                 var recipient = await GetChatSessionRecipient(activeSession);
+                VirtualGatewayDevice impersonateDevice = null;
+                if (activeSession.ImpersonateGatewayId != null)
+                {
+                    impersonateDevice = await registrationService.GetGatewayVirtualDevice(activeSession.ImpersonateGatewayId.Value);
+                    if (impersonateDevice?.PrivateKey == null)
+                    {
+                        await StopChatSessionDueMissingImpersonatedDevice(chatId);
+                        return false;
+                    }
+                }
                 EnsureMeshSenderCreated().SendMeshtasticMessageReactions(
                    [recipient],
                    chatId,
                    msgId,
                    emjText,
-                   impersonateDeviceId: activeSession.ImpersonateDeviceId,
+                   impersonateDevice: impersonateDevice,
                    forceRelayGatewayId: activeSession.ForceGatewayId);
 
                 return true;
@@ -222,6 +232,16 @@ namespace TBot.Bot
                 $"{trimmedUserName}{emojis}");
 
             return true;
+        }
+
+        private async Task StopChatSessionDueMissingImpersonatedDevice(long chatId)
+        {
+            await botCache.StopChatSession(chatId, db);
+            await botClient.TrySendMessage(
+                   registrationService,
+                   logger,
+                   chatId,
+                   $"❌ Chat is ended. Virtual device no longer available");
         }
 
         private MeshtasticBotMsgStatusTracker EnsureMeshSenderCreated()
@@ -497,10 +517,21 @@ namespace TBot.Bot
                     });
                 return;
             }
-            
+
             if (activeSession != null)
             {
                 var recipient = await GetChatSessionRecipient(activeSession);
+
+                VirtualGatewayDevice impersonateDevice = null;
+                if (activeSession.ImpersonateGatewayId != null)
+                {
+                    impersonateDevice = await registrationService.GetGatewayVirtualDevice(activeSession.ImpersonateGatewayId.Value);
+                    if (impersonateDevice?.PrivateKey == null)
+                    {
+                        await StopChatSessionDueMissingImpersonatedDevice(chatId);
+                        return;
+                    }
+                }
 
                 var status = await EnsureMeshSenderCreated().SendAndTrackMeshtasticMessages(
                     [recipient],
@@ -508,7 +539,7 @@ namespace TBot.Bot
                     msgId,
                     replyToTelegramMessageId,
                     textToMesh,
-                    activeSession.ImpersonateDeviceId,
+                    impersonateDevice,
                     activeSession.ForceGatewayId);
 
                 if (recipient.IsPublicChannel || recipient.RecipientPrivateChannelId != null)
@@ -533,11 +564,12 @@ namespace TBot.Bot
                                 await tgSender.AddPublicChannelMeshMessageToTgChats(
                                     otherChatSessions,
                                     status.MeshMessages.Keys.First(),
-                                    activeSession.ImpersonateDeviceId ?? _options.MeshtasticNodeId,
                                     (PublicChannel)recipient,
                                     textToMesh,
                                     replyToMeshMsgId,
-                                    status);
+                                    status,
+                                    impersonateDevice: impersonateDevice,
+                                    deviceId: impersonateDevice == null? _options.MeshtasticNodeId : null);
                             }
                             else if (recipient.RecipientPrivateChannelId != null)
                             {
@@ -659,7 +691,7 @@ namespace TBot.Bot
             var hexId = MeshtasticService.GetMeshtasticNodeHexId(deviceId);
             var text = $"\u26a0\ufe0f Gateway *{StringHelper.EscapeMd(deviceName)}* ({hexId}) has been automatically demoted due to inactivity. " +
                        "It has not been seen on the network for an extended period. " +
-                       "Use /promote_to_gateway to restore gateway status once the device is back online.";
+                       "Use /promote\\_to\\_gateway to restore gateway status once the device is back online.";
 
             foreach (var chatId in chatIds)
             {
