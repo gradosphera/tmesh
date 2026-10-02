@@ -907,11 +907,6 @@ namespace TBot
             return (publicKey, privateKey);
         }
 
-        public static (byte[] publicKey, byte[] privateKey) GenerateKeyPair()
-        {
-            return Meshtastic.Crypto.PKIEncryption.GenerateKeyPair();
-        }
-
         public static bool CanSendMessage(string text)
         {
             var byteCount = Encoding.UTF8.GetByteCount(text);
