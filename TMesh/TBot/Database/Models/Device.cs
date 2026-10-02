@@ -23,6 +23,7 @@ public class Device : IRecipient
     public double? Latitude { get; set; }
     public double? Longitude { get; set; }
     public bool NoDmPongs { get; set; }
+    public bool IsUnmessagable { get; set; }
     public DeviceRole? Role { get; set; }
     public bool IsLocationPublic { get; set; }
     public DateTime? LocationUpdatedUtc { get; set; }

@@ -284,7 +284,7 @@ namespace TBot.Bot
 
                 if (!network.DisablePongs)
                 {
-                    if (device.NoDmPongs)
+                    if (device.NoDmPongs || device.IsUnmessagable)
                     {
                         // Device has opted out of DM pongs; skip silently
                         return;
@@ -487,7 +487,8 @@ namespace TBot.Bot
                         PongSent = 1,
                     });
 
-                    await pongService.SchedulePingStats(message.DeviceId, message.GatewayId, message.Id, pongMsgId, registrationService);
+                    //No stats msg for private channels as we are replying to channel not DM
+                    //await pongService.SchedulePingStats(message.DeviceId, message.GatewayId, message.Id, pongMsgId, registrationService);
                 }
                 return;
             }
@@ -674,10 +675,19 @@ namespace TBot.Bot
             {
                 var network = await registrationService.GetNetwork(device.NetworkId);
 
-                if (device.NoDmPongs)
+                if (device.NoDmPongs || device.IsUnmessagable)
                 {
-                    var noPongsReply = _options.Texts.PingReplyNoPongs
-                        ?? "Can't answer. You can reenable pongs with /enablepongs";
+                    string noPongsReply;
+                    
+                    if (device.NoDmPongs)
+                    {
+                        noPongsReply = _options.Texts.PingReplyNoPongs ?? "Can't answer. You can reenable pongs with /enablepongs";
+                    }
+                    else // device.IsUnmessagable
+                    {
+                        noPongsReply = _options.Texts.PingReplyUnmessagable ?? "Can't answer. Device is unmessagable.";
+                    }
+
                     meshtasticService.SendDirectTextMessage(
                         message.DeviceId,
                         device.NetworkId,
@@ -883,6 +893,7 @@ namespace TBot.Bot
                 message.PublicKey,
                 message.Id,
                 publicChannelIdWithPreset,
+                message.NodeInfo.IsUnmessagable,
                 MeshtasticService.ConvertDeviceRole(message.NodeInfo.Role));
 
             if (message.NeedAck && res.device != null && res.device.PublicKey != null)

@@ -866,6 +866,7 @@ namespace TBot
             byte[] publicKey,
             long meshPacketId,
             int? nodeInfoFromPublicChannelId,
+            bool noMessages,
             DeviceRole? role)
         {
             if (publicKey == null || publicKey.Length == 0 || publicKey.Length != MeshtasticService.PkiKeyLength)
@@ -886,6 +887,7 @@ namespace TBot
                     PublicKey = publicKey,
                     HardwareModel = hardwareModel,
                     MacAddress = macAddress,
+                    IsUnmessagable = noMessages,
                     Role = role,
                     CreatedUtc = now,
                     UpdatedUtc = now,
@@ -907,6 +909,7 @@ namespace TBot
             {
                 entity.NetworkId = networkId;
                 entity.PublicKey = publicKey;
+                entity.IsUnmessagable = noMessages;
                 entity.NodeName = nodeName;
                 entity.HardwareModel = hardwareModel;
                 entity.MacAddress = macAddress;
@@ -924,6 +927,7 @@ namespace TBot
                     && entity.PublicKey.AsSpan().SequenceEqual(publicKey))
             {
                 entity.NetworkId = networkId;
+                entity.IsUnmessagable = noMessages;
                 entity.NodeName = nodeName;
                 entity.Role = role;
                 if (nodeInfoFromPublicChannelId != null)
