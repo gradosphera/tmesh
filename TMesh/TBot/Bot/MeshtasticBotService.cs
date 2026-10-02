@@ -606,7 +606,9 @@ namespace TBot.Bot
                 await HandleEndChatRequstFromMesh(message, device, device, null);
                 return;
             }
-            else if (cmdText != null && cmdText.Equals("nopongs", StringComparison.OrdinalIgnoreCase))
+            else if (cmdText != null 
+                && (cmdText.Equals("nopongs", StringComparison.OrdinalIgnoreCase) ||
+                    cmdText.Equals("nodm", StringComparison.OrdinalIgnoreCase)))
             {
                 await registrationService.SetDeviceNoDmPongsAsync(message.DeviceId, true);
                 meshtasticService.SendDirectTextMessage(
@@ -619,7 +621,8 @@ namespace TBot.Bot
                     hopLimit: message.GetSuggestedReplyHopLimit());
                 return;
             }
-            else if (cmdText != null && cmdText.Equals("enablepongs", StringComparison.OrdinalIgnoreCase))
+            else if (cmdText != null && (cmdText.Equals("enablepongs", StringComparison.OrdinalIgnoreCase)
+                || cmdText.Equals("enabledm", StringComparison.OrdinalIgnoreCase)))
             {
                 await registrationService.SetDeviceNoDmPongsAsync(message.DeviceId, false);
                 meshtasticService.SendDirectTextMessage(

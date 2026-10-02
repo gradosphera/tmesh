@@ -117,7 +117,7 @@ namespace TBot.Bot
                             var registrationService = scope.ServiceProvider.GetRequiredService<RegistrationService>();
                             var device = await registrationService.GetDeviceAsync(cachedInfo.DeviceId);
 
-                            if (device == null || device.PublicKey == null)
+                            if (device == null || device.PublicKey == null || device.NoDmPongs)
                             {
                                 return;
                             }
